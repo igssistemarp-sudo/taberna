@@ -31,7 +31,7 @@ import {
 import "./styles.css";
 
 const API_URL = import.meta.env.VITE_API_URL ?? (window.location.port === "5173" ? "http://localhost:3333" : window.location.origin);
-const money = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const money = (value: number) => (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 type User = { id: string; name: string; login: string; role: string };
 type Company = { id: string; razaoSocial: string; nomeFantasia: string; onlineMenuSlug: string; serviceFeeEnabled: boolean; serviceFeePercent: number; printerKitchenIp?: string | null; printerBarIp?: string | null; printerCashIp?: string | null; printerPort: number; openingHours?: string | null; logoUrl?: string | null; theme?: string | null };
