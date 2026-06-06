@@ -136,6 +136,84 @@ function dayRange(from?: string, to?: string) {
   return { start, end };
 }
 
+type ReportFilters = {
+  from: string;
+  to: string;
+  fromHour: number | null;
+  toHour: number | null;
+  userId: string | null;
+  waiterId: string | null;
+  driverName: string | null;
+  customerId: string | null;
+  neighborhoodId: string | null;
+  paymentMethod: string | null;
+};
+
+function parseReportFilters(req: Request): ReportFilters {
+  return {
+    from: asString(req.query.from),
+    to: asString(req.query.to),
+    fromHour: asString(req.query.fromHour) ? Number(asString(req.query.fromHour)) : null,
+    toHour: asString(req.query.toHour) ? Number(asString(req.query.toHour)) : null,
+    userId: asString(req.query.userId) || null,
+    waiterId: asString(req.query.waiterId) || null,
+    driverName: asString(req.query.driverName) || null,
+    customerId: asString(req.query.customerId) || null,
+    neighborhoodId: asString(req.query.neighborhoodId) || null,
+    paymentMethod: asString(req.query.paymentMethod) || null
+  };
+}
+
+function orderNetTotal(order: {
+  items: Array<{ quantity: number; unitPriceCents: number; additives: Array<{ totalCents: number }> }>;
+  deliveryFeeCents: number;
+}) {
+  return calcOrderTotals(order.items) + order.deliveryFeeCents;
+}
+
+function orderGrossTotal(order: { items: Array<{ totalCents: number }>; deliveryFeeCents: number }) {
+  return order.items.reduce((sum, item) => sum + item.totalCents, 0) + order.deliveryFeeCents;
+}
+
+function reportDateKey(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+async function loadFilteredOrders(filters: ReportFilters) {
+  const { start, end } = dayRange(filters.from, filters.to);
+  const orders = await prisma.order.findMany({
+    where: {
+      createdAt: { gte: start, lte: end },
+      ...(filters.userId ? { waiterUserId: filters.userId } : {}),
+      ...(filters.waiterId ? { waiterUserId: filters.waiterId } : {}),
+      ...(filters.driverName ? { deliveryDriverName: filters.driverName } : {}),
+      ...(filters.customerId ? { customerId: filters.customerId } : {}),
+      ...(filters.neighborhoodId ? { neighborhoodId: filters.neighborhoodId } : {})
+    },
+    include: { items: { include: { additives: true, product: { include: { category: true } } } }, payments: true, neighborhood: true, waiter: true, customer: true, table: true }
+  });
+
+  return orders.filter((order) => {
+    const hour = order.createdAt.getHours();
+    if (filters.fromHour !== null && hour < filters.fromHour) return false;
+    if (filters.toHour !== null && hour > filters.toHour) return false;
+    if (filters.paymentMethod && !order.payments.some((payment) => payment.methodNameSnapshot === filters.paymentMethod)) return false;
+    return true;
+  });
+}
+
+function sumBy<T>(items: T[], key: (item: T) => string, value: (item: T) => number) {
+  const map = new Map<string, number>();
+  for (const item of items) map.set(key(item), (map.get(key(item)) ?? 0) + value(item));
+  return map;
+}
+
+function topRows(map: Map<string, number>, labelName: string, valueName: string) {
+  return Array.from(map.entries())
+    .map(([label, value]) => ({ [labelName]: label, [valueName]: value }))
+    .sort((a, b) => Number((b as Record<string, number>)[valueName]) - Number((a as Record<string, number>)[valueName]));
+}
+
 async function safeSetup() {
   try {
     await runDatabaseSetup();
@@ -705,40 +783,155 @@ app.post("/api/public/orders", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-app.get("/api/reports/summary", async (req, res) => {
-  const { start, end } = dayRange(asString(req.query.from), asString(req.query.to));
-  const orders = await prisma.order.findMany({ where: { createdAt: { gte: start, lte: end }, status: { not: "CANCELADO" } }, include: { items: { include: { additives: true, product: true } }, payments: true, neighborhood: true, waiter: true } });
-  const rows = orders.map((order) => ({ pedido: order.number, tipo: order.type, status: order.status, total: calcOrderTotals(order.items.map((item) => ({ quantity: item.quantity, unitPriceCents: item.unitPriceCents, additives: item.additives.map((additive) => ({ totalCents: additive.totalCents })) }))) + order.deliveryFeeCents, criado_em: order.createdAt.toISOString() }));
-  res.json({ rows, total: rows.reduce((sum, row) => sum + Number(row.total), 0) });
+app.get("/api/reports/summary", async (req, res, next) => {
+  try {
+    const filters = parseReportFilters(req);
+    const orders = await loadFilteredOrders(filters);
+    const total = orders.reduce((sum, order) => sum + orderNetTotal(order), 0);
+    res.json({ rows: orders.length, total });
+  } catch (error) { next(error); }
 });
 
 app.get("/api/reports/:kind", async (req, res, next) => {
   try {
     const format = asString(req.query.format, "json");
-    const { start, end } = dayRange(asString(req.query.from), asString(req.query.to));
-    const orders = await prisma.order.findMany({ where: { createdAt: { gte: start, lte: end } }, include: { items: { include: { additives: true, product: true } }, payments: true, neighborhood: true, waiter: true } });
-    const dataMap: Record<string, Array<Record<string, unknown>>> = {
-      sales_by_day: orders.map((order) => ({ data: order.createdAt.toLocaleDateString("pt-BR"), pedido: order.number, total: calcOrderTotals(order.items.map((item) => ({ quantity: item.quantity, unitPriceCents: item.unitPriceCents, additives: item.additives.map((a) => ({ totalCents: a.totalCents })) }))) + order.deliveryFeeCents })),
-      sales_by_product: Object.entries(orders.flatMap((order) => order.items).reduce((acc, item) => ({ ...acc, [item.nameSnapshot]: (acc[item.nameSnapshot] ?? 0) + item.quantity }), {} as Record<string, number>)).map(([produto, quantidade]) => ({ produto, quantidade })),
-      sales_by_category: [],
-      sales_by_waiter: Object.entries(orders.reduce((acc, order) => ({ ...acc, [(order.waiter?.name ?? order.waiterNameSnapshot ?? "Sem garcom")]: (acc[(order.waiter?.name ?? order.waiterNameSnapshot ?? "Sem garcom")] ?? 0) + 1 }), {} as Record<string, number>)).map(([garcom, pedidos]) => ({ garcom, pedidos })),
-      sales_by_payment: Object.entries(orders.flatMap((order) => order.payments).reduce((acc, payment) => ({ ...acc, [payment.methodNameSnapshot]: (acc[payment.methodNameSnapshot] ?? 0) + payment.amountCents }), {} as Record<string, number>)).map(([forma, valor]) => ({ forma, valor })),
-      delivery_by_neighborhood: Object.entries(orders.filter((order) => order.type === "DELIVERY" || order.type === "ONLINE").reduce((acc, order) => ({ ...acc, [(order.neighborhood?.name ?? order.districtSnapshot ?? "Sem bairro")]: (acc[(order.neighborhood?.name ?? order.districtSnapshot ?? "Sem bairro")] ?? 0) + 1 }), {} as Record<string, number>)).map(([bairro, pedidos]) => ({ bairro, pedidos })),
-      delivery_fees: orders.filter((order) => order.deliveryFeeCents > 0).map((order) => ({ pedido: order.number, taxa: order.deliveryFeeCents })),
-      top_products: Object.entries(orders.flatMap((order) => order.items).reduce((acc, item) => ({ ...acc, [item.nameSnapshot]: (acc[item.nameSnapshot] ?? 0) + item.quantity }), {} as Record<string, number>)).map(([produto, quantidade]) => ({ produto, quantidade })),
-      top_additions: Object.entries(orders.flatMap((order) => order.items.flatMap((item) => item.additives)).reduce((acc, additive) => ({ ...acc, [additive.nameSnapshot]: (acc[additive.nameSnapshot] ?? 0) + additive.quantity }), {} as Record<string, number>)).map(([adicional, quantidade]) => ({ adicional, quantidade })),
-      cancelled_orders: orders.filter((order) => order.status === "CANCELADO").map((order) => ({ pedido: order.number, motivo: order.cancelledReason ?? "" })),
-      cancelled_items: orders.flatMap((order) => order.items.filter((item) => item.cancelledAt).map((item) => ({ pedido: order.number, item: item.nameSnapshot, motivo: item.cancelledReason ?? "" }))),
-      profit: orders.flatMap((order) => order.items).map((item) => ({ produto: item.nameSnapshot, lucro_estimado: (item.unitPriceCents - (item.product?.costCents ?? 0)) * item.quantity })),
-      payables: await prisma.payable.findMany({ where: { dueDate: { gte: start, lte: end } } }).then((items) => items.map((item) => ({ descricao: item.description, valor: item.amountCents, status: item.status }))),
-      receivables: await prisma.receivable.findMany({ where: { dueDate: { gte: start, lte: end } } }).then((items) => items.map((item) => ({ descricao: item.description, valor: item.amountCents, status: item.status }))),
-      cashbook: (await prisma.cashMovement.findMany({ where: { createdAt: { gte: start, lte: end } }, include: { cashRegister: true } })).map((item) => ({ tipo: item.type, descricao: item.description, valor: item.amountCents, data: item.createdAt.toLocaleString("pt-BR") })),
-      cash_closing: await prisma.cashRegister.findMany({ where: { openedAt: { gte: start, lte: end } } }).then((items) => items.map((item) => ({ abertura: item.openedAt.toLocaleString("pt-BR"), fechamento: item.closedAt?.toLocaleString("pt-BR") ?? "", diferenca: item.differenceCents ?? 0 }))),
-      financial_overall: []
+    const filters = parseReportFilters(req);
+    const orders = await loadFilteredOrders(filters);
+    const allOrders = await prisma.order.findMany({ include: { items: { include: { additives: true, product: true } }, payments: true, neighborhood: true, waiter: true, customer: true } });
+    const products = await prisma.product.findMany({ include: { category: true } });
+    const kind = asString(req.params.kind);
+    const fromDate = filters.from ? new Date(filters.from) : todayStart();
+    const toDate = filters.to ? new Date(filters.to) : new Date();
+    const paymentRows = orders.flatMap((order) => order.payments.map((payment) => ({ order, payment })));
+    const itemRows = orders.flatMap((order) => order.items.map((item) => ({ order, item })));
+    const additionRows = orders.flatMap((order) => order.items.flatMap((item) => item.additives.map((addition) => ({ order, item, addition }))));
+    const byDate = sumBy(orders, (order) => reportDateKey(order.createdAt), (order) => orderNetTotal(order));
+    const byHour = sumBy(orders, (order) => `${String(order.createdAt.getHours()).padStart(2, "0")}h`, () => 1);
+    const byWeekday = sumBy(orders, (order) => ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"][order.createdAt.getDay()], (order) => orderNetTotal(order));
+    const byMonth = sumBy(orders, (order) => `${order.createdAt.getFullYear()}-${String(order.createdAt.getMonth() + 1).padStart(2, "0")}`, (order) => orderNetTotal(order));
+    const byProductQty = sumBy(itemRows, (row) => row.item.nameSnapshot, (row) => row.item.quantity);
+    const byProductRevenue = sumBy(itemRows, (row) => row.item.nameSnapshot, (row) => row.item.totalCents);
+    const byCategoryQty = sumBy(itemRows, (row) => row.item.product?.category?.name ?? "Sem categoria", (row) => row.item.quantity);
+    const byCategoryRevenue = sumBy(itemRows, (row) => row.item.product?.category?.name ?? "Sem categoria", (row) => row.item.totalCents);
+    const byAdditionQty = sumBy(additionRows, (row) => row.addition.nameSnapshot, (row) => row.addition.quantity);
+    const byAdditionRevenue = sumBy(additionRows, (row) => row.addition.nameSnapshot, (row) => row.addition.totalCents);
+    const byCustomer = sumBy(orders.filter((order) => order.customerNameSnapshot), (order) => order.customerNameSnapshot ?? "Sem cliente", (order) => orderNetTotal(order));
+    const byNeighborhood = sumBy(orders.filter((order) => order.type === "DELIVERY" || order.type === "ONLINE"), (order) => order.neighborhood?.name ?? order.districtSnapshot ?? "Sem bairro", (order) => orderNetTotal(order));
+    const byDriver = sumBy(orders.filter((order) => order.deliveryDriverName), (order) => order.deliveryDriverName ?? "Sem entregador", (order) => 1);
+    const byWaiter = sumBy(orders, (order) => order.waiter?.name ?? order.waiterNameSnapshot ?? "Sem garcom", (order) => orderNetTotal(order));
+    const byTable = sumBy(orders.filter((order) => order.table?.name), (order) => order.table?.name ?? "Sem mesa", (order) => orderNetTotal(order));
+    const payables = await prisma.payable.findMany({ where: { dueDate: { gte: fromDate, lte: toDate } } });
+    const receivables = await prisma.receivable.findMany({ where: { dueDate: { gte: fromDate, lte: toDate } } });
+    const stockMovements = await prisma.stockMovement.findMany({ where: { createdAt: { gte: fromDate, lte: toDate } }, include: { product: true } });
+    const allCustomers = await prisma.customer.findMany();
+
+    const lastPurchaseMap = new Map<string, { cliente: string; ultimo_pedido: string; valor: number }>();
+    for (const order of allOrders) {
+      if (!order.customerNameSnapshot) continue;
+      const current = lastPurchaseMap.get(order.customerNameSnapshot);
+      if (!current || new Date(current.ultimo_pedido).getTime() < order.createdAt.getTime()) {
+        lastPurchaseMap.set(order.customerNameSnapshot, { cliente: order.customerNameSnapshot, ultimo_pedido: order.createdAt.toISOString(), valor: orderNetTotal(order) });
+      }
+    }
+
+    const lastPurchaseRows = Array.from(lastPurchaseMap.values()).sort((a, b) => b.ultimo_pedido.localeCompare(a.ultimo_pedido));
+    const inactiveRows = allCustomers.flatMap((customer) => {
+      const customerOrders = allOrders.filter((order) => order.customerId === customer.id || order.customerNameSnapshot === customer.name);
+      if (!customerOrders.length) return [{ cliente: customer.name, dias_sem_compra: 9999 }];
+      const last = customerOrders.reduce((acc, order) => (order.createdAt > acc.createdAt ? order : acc), customerOrders[0]);
+      const days = Math.floor((Date.now() - last.createdAt.getTime()) / 86400000);
+      if (days >= 30) return [{ cliente: customer.name, dias_sem_compra: days }];
+      return [];
+    });
+
+    const rowsByKind: Record<string, Array<Record<string, unknown>>> = {
+      sales_by_period: [{
+        quantidade_pedidos: orders.length,
+        valor_bruto: orders.reduce((sum, order) => sum + orderGrossTotal(order), 0),
+        descontos: 0,
+        taxas_entrega: orders.reduce((sum, order) => sum + order.deliveryFeeCents, 0),
+        valor_liquido: orders.reduce((sum, order) => sum + orderNetTotal(order), 0),
+        ticket_medio: orders.length ? orders.reduce((sum, order) => sum + orderNetTotal(order), 0) / orders.length : 0
+      }],
+      sales_by_day: Array.from(byDate.entries()).map(([data, total]) => ({ data, total_vendido: total, pedidos: orders.filter((order) => reportDateKey(order.createdAt) === data).length, ticket_medio: orders.filter((order) => reportDateKey(order.createdAt) === data).length ? total / orders.filter((order) => reportDateKey(order.createdAt) === data).length : 0 })),
+      sales_by_hour: Array.from(byHour.entries()).map(([hora, quantidade]) => ({ hora, quantidade_pedidos: quantidade, valor_vendido: orders.filter((order) => `${String(order.createdAt.getHours()).padStart(2, "0")}h` === hora).reduce((sum, order) => sum + orderNetTotal(order), 0) })),
+      sales_by_weekday: Array.from(byWeekday.entries()).map(([dia, total]) => ({ dia, total_vendido: total, quantidade_pedidos: orders.filter((order) => ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"][order.createdAt.getDay()] === dia).length })),
+      sales_by_month: Array.from(byMonth.entries()).map(([mes, faturamento]) => ({ mes, faturamento, crescimento: 0 })),
+      top_products: Array.from(byProductQty.entries()).sort((a, b) => b[1] - a[1]).slice(0, 50).map(([produto, quantidade]) => ({ produto, quantidade, valor_faturado: byProductRevenue.get(produto) ?? 0 })),
+      bottom_products: Array.from(byProductQty.entries()).sort((a, b) => a[1] - b[1]).slice(0, 20).map(([produto, quantidade]) => ({ produto, quantidade })),
+      profit_by_product: products.map((product) => ({ produto: product.name, custo: product.costCents, venda: product.salePriceCents, lucro_unitario: product.salePriceCents - product.costCents, lucro_total: itemRows.filter((row) => row.item.productId === product.id).reduce((sum, row) => sum + ((row.item.unitPriceCents - product.costCents) * row.item.quantity), 0) })),
+      sales_by_category: Array.from(byCategoryQty.entries()).map(([categoria, quantidade]) => ({ categoria, quantidade, valor_vendido: byCategoryRevenue.get(categoria) ?? 0 })),
+      top_additions: Array.from(byAdditionQty.entries()).sort((a, b) => b[1] - a[1]).map(([adicional, quantidade]) => ({ adicional, quantidade, valor_gerado: byAdditionRevenue.get(adicional) ?? 0 })),
+      additional_revenue: [{ valor_gerado: additionRows.reduce((sum, row) => sum + row.addition.totalCents, 0) }],
+      top_customers: Array.from(byCustomer.entries()).sort((a, b) => b[1] - a[1]).map(([cliente, valor]) => ({ cliente, quantidade_pedidos: orders.filter((order) => order.customerNameSnapshot === cliente).length, valor_gasto: valor })),
+      customer_last_purchase: lastPurchaseRows,
+      inactive_customers: inactiveRows,
+      delivery_by_neighborhood: Array.from(byNeighborhood.entries()).sort((a, b) => b[1] - a[1]).map(([bairro, valor]) => ({ bairro, quantidade_pedidos: orders.filter((order) => (order.neighborhood?.name ?? order.districtSnapshot ?? "Sem bairro") === bairro).length, valor_vendido: valor })),
+      delivery_fee_by_neighborhood: Array.from(byNeighborhood.entries()).map(([bairro]) => ({ bairro, taxa_arrecadada: orders.filter((order) => (order.neighborhood?.name ?? order.districtSnapshot ?? "Sem bairro") === bairro).reduce((sum, order) => sum + order.deliveryFeeCents, 0) })),
+      delivery_time: orders.filter((order) => order.type === "DELIVERY" || order.type === "ONLINE").map((order) => {
+        const endTime = order.deliveredAt ?? order.dispatchedAt ?? order.readyAt ?? order.createdAt;
+        const minutes = Math.max(0, Math.round((endTime.getTime() - order.createdAt.getTime()) / 60000));
+        return { cliente: order.customerNameSnapshot ?? "", bairro: order.neighborhood?.name ?? order.districtSnapshot ?? "", tempo_medio_min: minutes, tempo_minimo_min: minutes, tempo_maximo_min: minutes };
+      }),
+      delivery_orders: orders.filter((order) => order.type === "DELIVERY" || order.type === "ONLINE").map((order) => ({ cliente: order.customerNameSnapshot ?? "", bairro: order.neighborhood?.name ?? order.districtSnapshot ?? "", entregador: order.deliveryDriverName ?? "", valor: orderNetTotal(order), horario: order.createdAt.toLocaleString("pt-BR") })),
+      delivery_performance: Array.from(byDriver.entries()).sort((a, b) => b[1] - a[1]).map(([entregador, entregas]) => ({ entregador, quantidade_entregas: entregas, valor_transportado: orders.filter((order) => order.deliveryDriverName === entregador).reduce((sum, order) => sum + orderNetTotal(order), 0) })),
+      delivery_driver_commission: Array.from(byDriver.entries()).map(([entregador, entregas]) => ({ entregador, total_entregas: entregas, valor_comissao: entregas * 2, valor_a_receber: entregas * 2 })),
+      waiter_sales: Array.from(byWaiter.entries()).sort((a, b) => b[1] - a[1]).map(([garcom, valor]) => ({ garcom, quantidade_pedidos: orders.filter((order) => (order.waiter?.name ?? order.waiterNameSnapshot ?? "Sem garcom") === garcom).length, valor_vendido: valor })),
+      waiter_commission: Array.from(byWaiter.entries()).map(([garcom, valor]) => ({ garcom, percentual: 5, valor_gerado: valor, valor_comissao: valor * 0.05 })),
+      table_turnover: Array.from(byTable.entries()).sort((a, b) => b[1] - a[1]).map(([mesa, valor]) => ({ mesa, quantidade_atendimentos: orders.filter((order) => (order.table?.name ?? "Sem mesa") === mesa).length, tempo_medio_permanencia_min: 0, valor_consumido: valor })),
+      table_consumption: Array.from(byTable.entries()).map(([mesa, valor]) => ({ mesa, valor_consumido: valor })),
+      cashbook: (await prisma.cashMovement.findMany({ where: { createdAt: { gte: fromDate, lte: toDate } }, include: { cashRegister: true } })).map((item) => ({ tipo: item.type, descricao: item.description, valor: item.amountCents, data: item.createdAt.toLocaleString("pt-BR") })),
+      cash_closing: await prisma.cashRegister.findMany({ where: { openedAt: { gte: fromDate, lte: toDate } } }).then((items) => items.map((item) => ({ abertura: item.openedAt.toLocaleString("pt-BR"), fechamento: item.closedAt?.toLocaleString("pt-BR") ?? "", valor_esperado: item.expectedAmountCents ?? 0, valor_informado: item.closingAmountCents ?? 0, diferenca: item.differenceCents ?? 0 }))),
+      payable_summary: [
+        { status: "Abertas", total: payables.filter((item) => item.status === "ABERTO").length },
+        { status: "Pagas", total: payables.filter((item) => item.status === "PAGO").length },
+        { status: "Vencidas", total: payables.filter((item) => item.status === "VENCIDO").length }
+      ],
+      receivable_summary: [
+        { status: "Em aberto", total: receivables.filter((item) => item.status === "ABERTO").length },
+        { status: "Recebidas", total: receivables.filter((item) => item.status === "PAGO").length },
+        { status: "Vencidas", total: receivables.filter((item) => item.status === "VENCIDO").length }
+      ],
+      flow_cash: [
+        { tipo: "Entradas", valor: paymentRows.reduce((sum, row) => sum + row.payment.amountCents, 0) },
+        { tipo: "Saídas", valor: payables.filter((item) => item.status !== "PAGO").reduce((sum, item) => sum + item.amountCents, 0) }
+      ],
+      dre_simplificada: [{
+        receitas: orders.reduce((sum, order) => sum + orderNetTotal(order), 0),
+        custos: itemRows.reduce((sum, row) => sum + ((row.item.product?.costCents ?? 0) * row.item.quantity), 0),
+        despesas: payables.filter((item) => item.status !== "PAGO").reduce((sum, item) => sum + item.amountCents, 0),
+        lucro: orders.reduce((sum, order) => sum + orderNetTotal(order), 0) - itemRows.reduce((sum, row) => sum + ((row.item.product?.costCents ?? 0) * row.item.quantity), 0) - payables.filter((item) => item.status !== "PAGO").reduce((sum, item) => sum + item.amountCents, 0)
+      }],
+      stock_current: products.map((product) => ({ produto: product.name, quantidade: product.stockCurrent, custo: product.costCents })),
+      stock_low: products.filter((product) => product.stockCurrent <= product.lowStockThreshold).map((product) => ({ produto: product.name, quantidade: product.stockCurrent, minimo: product.lowStockThreshold })),
+      stock_movement: stockMovements.map((movement) => ({ tipo: movement.type, produto: movement.product.name, quantidade: movement.quantity, data: movement.createdAt.toLocaleString("pt-BR") })),
+      cancelled_orders: orders.filter((order) => order.status === "CANCELADO").map((order) => ({ usuario: order.waiter?.name ?? order.waiterNameSnapshot ?? "", motivo: order.cancelledReason ?? "", valor: orderNetTotal(order) })),
+      cancelled_items: orders.flatMap((order) => order.items.filter((item) => item.cancelledAt).map((item) => ({ produto: item.nameSnapshot, quantidade: item.quantity, motivo: item.cancelledReason ?? "" }))),
+      cancellation_ranking: Array.from(sumBy(orders.filter((order) => order.status === "CANCELADO"), (order) => order.waiter?.name ?? order.waiterNameSnapshot ?? "Sem usuario", () => 1).entries()).map(([usuario, cancelamentos]) => ({ usuario, cancelamentos })),
+      executive_dashboard: [{
+        faturamento_hoje: orders.filter((order) => reportDateKey(order.createdAt) === reportDateKey(new Date())).reduce((sum, order) => sum + orderNetTotal(order), 0),
+        faturamento_mes: orders.reduce((sum, order) => sum + orderNetTotal(order), 0),
+        pedidos_hoje: orders.filter((order) => reportDateKey(order.createdAt) === reportDateKey(new Date())).length,
+        delivery_hoje: orders.filter((order) => (order.type === "DELIVERY" || order.type === "ONLINE") && reportDateKey(order.createdAt) === reportDateKey(new Date())).length,
+        mesas_ocupadas: await prisma.serviceTable.count({ where: { status: { in: ["OCUPADA", "AGUARDANDO_PREPARO", "PRONTO", "FECHANDO_CONTA"] } } }),
+        ticket_medio: orders.length ? orders.reduce((sum, order) => sum + orderNetTotal(order), 0) / orders.length : 0,
+        produto_mais_vendido: Array.from(byProductQty.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "",
+        bairro_que_mais_compra: Array.from(byNeighborhood.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "",
+        entregador_destaque: Array.from(byDriver.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "",
+        garcom_destaque: Array.from(byWaiter.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "",
+        lucro_estimado: itemRows.reduce((sum, row) => sum + ((row.item.unitPriceCents - (row.item.product?.costCents ?? 0)) * row.item.quantity), 0),
+        contas_a_pagar_vencidas: payables.filter((item) => item.status === "VENCIDO").reduce((sum, item) => sum + item.amountCents, 0),
+        fluxo_de_caixa: paymentRows.reduce((sum, row) => sum + row.payment.amountCents, 0) - payables.filter((item) => item.status !== "PAGO").reduce((sum, item) => sum + item.amountCents, 0)
+      }]
     };
-    const rows = dataMap[asString(req.params.kind)] ?? [];
+
+    const rows = rowsByKind[kind] ?? [];
+    if (kind === "customer_last_purchase" || kind === "executive_dashboard") {
+      if (format === "json") return res.json(rows);
+      return downloadReport(res, kind, rows, format);
+    }
     if (format === "json") return res.json(rows);
-    return downloadReport(res, asString(req.params.kind), rows, format);
+    return downloadReport(res, kind, rows, format);
   } catch (error) { next(error); }
 });
 
