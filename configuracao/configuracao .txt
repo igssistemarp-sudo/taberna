@@ -1,0 +1,137 @@
+taberna-postgres
+Free
+Upgrade your instance
+View docs
+
+Connect
+Service ID:
+dpg-d8i946btqb8s73ato8lg-a
+
+Info
+Your database will expire on July 6, 2026. The database will be deleted unless you upgrade to a paid instance type.
+General
+Name
+A unique name for your database.
+taberna-postgres
+
+Edit
+Created
+a few seconds ago
+Status
+available
+PostgreSQL Version
+18
+Region
+Oregon (US West)
+Read Replicas
+
+Add Read Replica
+Storage
+Fetching storage metrics
+Storage Autoscaling
+Disabled
+Datadog API Key
+
+Add Datadog API Key
+Postgres Instance
+Instance Type
+Free
+256 MB
+ RAM
+0.1
+ CPU
+1 GB
+ Storage
+Update
+A credit card is required to change instance types.
+Add payment information
+High Availability
+Run a standby instance of your database and automatically fail over to it if the primary encounters an issue.
+
+
+Disabled
+Only available for Pro instances and higher.
+See upgrade options
+Connections
+Hostname
+An internal hostname used by your Render services.
+dpg-d8i946btqb8s73ato8lg-a
+
+Port
+5432
+
+Database
+taberna_postgres
+
+Username
+taberna_postgres_user
+
+Password
+Q9EYNqdt6cjNtQ2y6tgApke3uzsMRVCJ
+
+
+Internal Database URL
+postgresql://taberna_postgres_user:Q9EYNqdt6cjNtQ2y6tgApke3uzsMRVCJ@dpg-d8i946btqb8s73ato8lg-a/taberna_postgres
+
+
+External Database URL
+postgresql://taberna_postgres_user:Q9EYNqdt6cjNtQ2y6tgApke3uzsMRVCJ@dpg-d8i946btqb8s73ato8lg-a.oregon-postgres.render.com/taberna_postgres
+
+
+PSQL Command
+PGPASSWORD=Q9EYNqdt6cjNtQ2y6tgApke3uzsMRVCJ psql -h dpg-d8i946btqb8s73ato8lg-a.oregon-postgres.render.com -U taberna_postgres_user taberna_postgres
+
+
+Credentials
+Create new default credentials and delete the old ones when ready.
+
+Username
+1
+Password
+
+Open Connections
+
+Created
+taberna_postgres_userDefault	
+••••••••••••
+0	<1m	
+
+New default credential
+Networking
+Inbound IP Restrictions
+Limit incoming traffic to your services from specific IP ranges. Sources are specified in CIDR block notation.
+
+1
+IP range is allowed from outside of your private network.
+
+Validate IP address
+0.0.0.0
+Affected by:
+Workspace
+View rules
+Source
+Description
+0.0.0.0/0	everywhere
+Affected by:
+Workspace
+Environment
+View rules
+Source
+Description
+0.0.0.0/0	everywhere
+PostgreSQL Inbound IP Rules
+Source	Description	Delete
+CIDR block
+0.0.0.0/0
+Description
+everywhere
+
+
+Add source
+Cancel
+Save
+
+Delete Database
+
+Restart Database
+

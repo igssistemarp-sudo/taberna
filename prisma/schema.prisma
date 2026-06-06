@@ -1,0 +1,421 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  CAIXA
+  GARCOM
+  COZINHA
+  ENTREGADOR
+  GERENTE
+}
+
+enum TableStatus {
+  LIVRE
+  OCUPADA
+  AGUARDANDO_PREPARO
+  PRONTO
+  FECHANDO_CONTA
+}
+
+enum OrderType {
+  MESA
+  BALCAO
+  DELIVERY
+  ONLINE
+}
+
+enum OrderStatus {
+  NOVO
+  ACEITO
+  EM_PREPARO
+  PRONTO
+  SAIU_PARA_ENTREGA
+  ENTREGUE
+  FECHANDO_CONTA
+  PAGO
+  CANCELADO
+}
+
+enum CashMovementType {
+  ABERTURA
+  ENTRADA
+  SAIDA
+  SANGRIA
+  REFORCO
+  PAGAMENTO
+}
+
+enum FinancialStatus {
+  ABERTO
+  PAGO
+  VENCIDO
+  CANCELADO
+}
+
+enum PrinterType {
+  COZINHA
+  BAR
+  CAIXA
+}
+
+model CompanySetting {
+  id                String   @id @default(cuid())
+  razaoSocial       String
+  nomeFantasia      String
+  cnpjCpf           String?
+  ie                String?
+  cep               String?
+  street            String?
+  number            String?
+  district          String?
+  city              String?
+  state             String?
+  complement        String?
+  referencePoint    String?
+  phone             String?
+  whatsapp          String?
+  email             String?
+  logoUrl           String?
+  openingHours      String?
+  serviceFeeEnabled Boolean  @default(false)
+  serviceFeePercent Float    @default(0)
+  onlineMenuEnabled Boolean  @default(true)
+  onlineMenuSlug    String   @unique @default("igs-lanchonete-pro")
+  printerKitchenIp  String?
+  printerBarIp      String?
+  printerCashIp     String?
+  printerPort       Int      @default(9100)
+  theme             String   @default("dark")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model User {
+  id            String   @id @default(cuid())
+  name          String
+  login         String   @unique
+  passwordHash  String
+  role          UserRole @default(CAIXA)
+  active        Boolean  @default(true)
+  notes         String?
+  lastLoginAt   DateTime?
+  orders        Order[]  @relation("OrderWaiter")
+  openedCash    CashRegister[] @relation("CashOpenedBy")
+  cashMovements CashMovement[]
+  auditLogs     AuditLog[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Neighborhood {
+  id                 String   @id @default(cuid())
+  name               String
+  city               String
+  deliveryFeeCents   Int      @default(0)
+  avgDeliveryMinutes Int      @default(30)
+  active             Boolean  @default(true)
+  customers          Customer[]
+  orders             Order[]
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model Customer {
+  id             String   @id @default(cuid())
+  name           String
+  document       String?
+  phone          String?
+  whatsapp       String?
+  email          String?
+  zipCode        String?
+  street         String?
+  number         String?
+  neighborhoodId String?
+  neighborhood   Neighborhood? @relation(fields: [neighborhoodId], references: [id])
+  district       String?
+  city           String?
+  state          String?
+  complement     String?
+  referencePoint String?
+  notes          String?
+  orders         Order[]
+  receivables    Receivable[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model ProductCategory {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  active    Boolean  @default(true)
+  products  Product[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Product {
+  id                 String   @id @default(cuid())
+  code               Int      @unique
+  barcode            String?
+  name               String
+  categoryId         String?
+  category           ProductCategory? @relation(fields: [categoryId], references: [id])
+  description        String?
+  salePriceCents     Int      @default(0)
+  costCents          Int      @default(0)
+  stockCurrent       Int      @default(0)
+  controlStock       Boolean  @default(false)
+  onlineMenu         Boolean  @default(false)
+  printTarget        PrinterType @default(COZINHA)
+  lowStockThreshold  Int      @default(5)
+  photoUrl           String?
+  active             Boolean  @default(true)
+  items              OrderItem[]
+  stockMovements     StockMovement[]
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model Additional {
+  id         String   @id @default(cuid())
+  name       String
+  valueCents Int      @default(0)
+  charge     Boolean  @default(true)
+  category   String?
+  active     Boolean  @default(true)
+  items      OrderItemAdditional[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model PaymentMethod {
+  id        String   @id @default(cuid())
+  name      String
+  allowFee  Boolean  @default(false)
+  active    Boolean  @default(true)
+  orders    OrderPayment[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ServiceTable {
+  id           String      @id @default(cuid())
+  name         String
+  status       TableStatus @default(LIVRE)
+  waiterName   String?
+  customerName String?
+  active       Boolean     @default(true)
+  notes        String?
+  orders       Order[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Supplier {
+  id        String   @id @default(cuid())
+  name      String
+  document  String?
+  phone     String?
+  email     String?
+  active    Boolean  @default(true)
+  payables  Payable[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Order {
+  id                     String      @id @default(cuid())
+  number                 Int         @unique
+  type                   OrderType
+  status                 OrderStatus @default(NOVO)
+  tableId                String?
+  table                  ServiceTable? @relation(fields: [tableId], references: [id])
+  customerId             String?
+  customer               Customer?   @relation(fields: [customerId], references: [id])
+  neighborhoodId         String?
+  neighborhood           Neighborhood? @relation(fields: [neighborhoodId], references: [id])
+  waiterUserId           String?
+  waiter                 User?       @relation("OrderWaiter", fields: [waiterUserId], references: [id])
+  waiterNameSnapshot     String?
+  customerNameSnapshot   String?
+  customerPhoneSnapshot  String?
+  streetSnapshot         String?
+  numberSnapshot         String?
+  districtSnapshot       String?
+  citySnapshot           String?
+  stateSnapshot          String?
+  zipCodeSnapshot        String?
+  complementSnapshot     String?
+  referencePointSnapshot String?
+  deliveryFeeCents       Int         @default(0)
+  changeForCents         Int         @default(0)
+  deliveryDriverName     String?
+  notes                  String?
+  onlineCode             String?     @unique
+  acceptedAt             DateTime?
+  preparedAt             DateTime?
+  readyAt                DateTime?
+  dispatchedAt           DateTime?
+  deliveredAt            DateTime?
+  cancelledAt            DateTime?
+  cancelledReason        String?
+  items                  OrderItem[]
+  payments               OrderPayment[]
+  cashMovements          CashMovement[]
+  stockMovements         StockMovement[]
+  createdAt              DateTime    @default(now())
+  updatedAt              DateTime    @updatedAt
+  @@index([type, status, createdAt])
+}
+
+model OrderItem {
+  id              String   @id @default(cuid())
+  orderId         String
+  order           Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId       String?
+  product         Product? @relation(fields: [productId], references: [id])
+  nameSnapshot    String
+  quantity        Int      @default(1)
+  unitPriceCents   Int      @default(0)
+  totalCents      Int      @default(0)
+  printTarget     PrinterType @default(COZINHA)
+  note            String?
+  sentToKitchen   Boolean  @default(false)
+  cancelledAt     DateTime?
+  cancelledReason String?
+  additives       OrderItemAdditional[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model OrderItemAdditional {
+  id             String   @id @default(cuid())
+  orderItemId     String
+  orderItem       OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  additionalId    String?
+  additional      Additional? @relation(fields: [additionalId], references: [id])
+  nameSnapshot    String
+  quantity        Int      @default(1)
+  unitPriceCents  Int      @default(0)
+  totalCents      Int      @default(0)
+  createdAt       DateTime @default(now())
+}
+
+model OrderPayment {
+  id                 String   @id @default(cuid())
+  orderId            String
+  order              Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  paymentMethodId    String?
+  paymentMethod      PaymentMethod? @relation(fields: [paymentMethodId], references: [id])
+  methodNameSnapshot String
+  amountCents        Int      @default(0)
+  feeCents           Int      @default(0)
+  changeCents        Int      @default(0)
+  createdAt          DateTime @default(now())
+}
+
+model CashRegister {
+  id                  String   @id @default(cuid())
+  openedById          String?
+  openedBy            User?    @relation("CashOpenedBy", fields: [openedById], references: [id])
+  openedAt            DateTime @default(now())
+  openingAmountCents  Int      @default(0)
+  closedAt            DateTime?
+  closingAmountCents  Int?
+  expectedAmountCents Int?
+  differenceCents     Int?
+  notes               String?
+  movements           CashMovement[]
+}
+
+model CashMovement {
+  id               String   @id @default(cuid())
+  cashRegisterId   String
+  cashRegister     CashRegister @relation(fields: [cashRegisterId], references: [id], onDelete: Cascade)
+  type             CashMovementType
+  description      String
+  amountCents      Int      @default(0)
+  paymentMethodName String?
+  orderId          String?
+  order            Order?   @relation(fields: [orderId], references: [id])
+  userId           String?
+  user             User?    @relation(fields: [userId], references: [id])
+  createdAt        DateTime @default(now())
+}
+
+model Payable {
+  id            String          @id @default(cuid())
+  supplierId    String?
+  supplier      Supplier?       @relation(fields: [supplierId], references: [id])
+  supplierName  String?
+  description   String
+  category      String?
+  amountCents   Int
+  dueDate       DateTime
+  paidAt        DateTime?
+  status        FinancialStatus @default(ABERTO)
+  paymentMethod String?
+  attachmentUrl String?
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Receivable {
+  id            String          @id @default(cuid())
+  customerId    String?
+  customer      Customer?       @relation(fields: [customerId], references: [id])
+  customerName  String?
+  description   String
+  amountCents   Int
+  dueDate       DateTime
+  receivedAt    DateTime?
+  status        FinancialStatus @default(ABERTO)
+  paymentMethod String?
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model PrinterConfig {
+  id         String      @id @default(cuid())
+  name       String
+  type       PrinterType
+  ip         String
+  port       Int         @default(9100)
+  active     Boolean     @default(true)
+  notes      String?
+  lastTestAt DateTime?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+}
+
+model StockMovement {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orderId   String?
+  order     Order?   @relation(fields: [orderId], references: [id])
+  type      String
+  quantity  Int
+  note      String?
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  entity    String
+  entityId  String?
+  details   Json?
+  createdAt DateTime @default(now())
+}
