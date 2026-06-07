@@ -211,6 +211,17 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
     setMessage("Configuração salva.");
   }
 
+  function clearConfig() {
+    localStorage.removeItem(CONFIG_KEY);
+    localStorage.removeItem(TOKEN_KEY);
+    setConfig(null);
+    setToken(null);
+    setUser(null);
+    setSnapshot(null);
+    setStage("config");
+    setMessage("Configuração limpa.");
+  }
+
   async function doLogin() {
     if (!activeConfig) return;
     setLoading(true);
@@ -524,6 +535,7 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <button onClick={testConnection} style={primaryButton}><Bell size={16} /> Testar Conexão</button>
               <button onClick={saveConfig} style={secondaryButton}>Salvar Configuração</button>
+              <button onClick={clearConfig} style={secondaryButton}>Limpar Configuração</button>
             </div>
           </div>
         </div>
