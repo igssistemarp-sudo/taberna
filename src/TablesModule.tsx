@@ -249,43 +249,59 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
         </section>
 
         {showAddItem && (
-          <section className="panel">
-            <div className="row-between"><h3>Lançar Item</h3><button className="ghost" onClick={() => setShowAddItem(false)}><X size={16} /></button></div>
-            <label>Buscar produto<input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Nome ou código..." autoFocus /></label>
-            <div style={{ display: "grid", gap: 6, maxHeight: 240, overflow: "auto", marginTop: 8 }}>
-              {filteredProducts.map((p) => (
-                <button key={p.id} className="ghost" style={{ textAlign: "left", justifyContent: "flex-start", display: "flex", gap: 12, alignItems: "center", padding: "8px 12px" }} onClick={() => selectProduct(p)}>
-                  <span style={{ color: "var(--text-dim)", minWidth: 40 }}>#{p.code}</span>
-                  <strong>{p.name}</strong>
-                  <span style={{ marginLeft: "auto", color: "var(--accent)" }}>{money(p.salePriceCents)}</span>
-                </button>
-              ))}
-            </div>
-            {selectedProducts.map((sp, idx) => (
-              <div key={sp.product.id} style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 12, marginTop: 8 }}>
-                <div className="row-between"><strong>{sp.product.name}</strong><button className="ghost danger" onClick={() => removeProduct(idx)}><X size={14} /></button></div>
-                <div style={{ display: "flex", gap: 12, marginTop: 6, alignItems: "center" }}>
-                  <label style={{ flex: 1 }}>Qtd<input type="number" value={sp.quantity} onChange={(e) => updateProductQty(idx, Number(e.target.value))} min={1} /></label>
-                  <span style={{ fontWeight: 700, color: "var(--accent)" }}>{money(sp.quantity * sp.product.salePriceCents)}</span>
-                </div>
-                <label style={{ marginTop: 6 }}>Obs.<input value={sp.note} onChange={(e) => updateProductNote(idx, e.target.value)} placeholder="Ex: sem cebola, bem passado..." /></label>
-                <div style={{ marginTop: 8 }}>
-                  <small style={{ color: "var(--text-dim)", display: "block", marginBottom: 4 }}>Adicionais:</small>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {additions.filter((a) => a.active).map((add) => {
-                      const selected = sp.selectedAdditions.find((sa) => sa.id === add.id);
-                      return (
-                        <button key={add.id} className={selected ? "" : "ghost"} style={{ fontSize: 12, padding: "4px 10px", borderRadius: 8 }} onClick={() => toggleAddition(idx, add)}>
-                          {add.name} {selected ? `(${selected.qty}x)` : ""} {money(add.valueCents)}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 998, display: "grid", placeItems: "center", backdropFilter: "blur(4px)" }} onClick={() => { if (!selectedProducts.length) setShowAddItem(false); }}>
+            <div style={{ background: "var(--surface)", borderRadius: 20, width: 700, maxWidth: "96vw", maxHeight: "90vh", display: "flex", flexDirection: "column", boxShadow: "0 24px 80px rgba(0,0,0,0.3)", overflow: "hidden" }} onClick={(e) => e.stopPropagation()}>
+              <div className="row-between" style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)" }}>
+                <h3 style={{ margin: 0 }}>Lançar Itens</h3>
+                <button className="ghost" onClick={() => setShowAddItem(false)}><X size={18} /></button>
               </div>
-            ))}
-            {!!selectedProducts.length && <button style={{ marginTop: 12 }} onClick={addItems}><Plus size={16} /> Confirmar itens</button>}
-          </section>
+              <div style={{ padding: "12px 20px", borderBottom: "1px solid var(--border)" }}>
+                <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Buscar por nome ou código..." autoFocus style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: "2px solid var(--border)", fontSize: 15, outline: "none", boxSizing: "border-box", background: "var(--bg)" }} />
+              </div>
+              <div style={{ flex: 1, overflow: "auto", padding: "12px 20px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                {filteredProducts.map((p) => {
+                  const isSelected = selectedProducts.some((sp) => sp.product.id === p.id);
+                  return (
+                    <button key={p.id} onClick={() => { if (!isSelected) selectProduct(p); else removeProduct(selectedProducts.findIndex((sp) => sp.product.id === p.id)); }} style={{ display: "flex", gap: 8, alignItems: "center", padding: "10px 14px", borderRadius: 12, border: isSelected ? "2px solid #2563eb" : "1px solid var(--border)", background: isSelected ? "#eff6ff" : "var(--surface)", cursor: "pointer", textAlign: "left", fontSize: 13, transition: "all 0.1s" }}>
+                      <span style={{ color: "var(--text-dim)", fontWeight: 600, minWidth: 32 }}>#{p.code}</span>
+                      <div style={{ flex: 1 }}><strong style={{ display: "block", fontSize: 14 }}>{p.name}</strong><small style={{ color: "var(--text-dim)" }}>{p.category?.name ?? ""}</small></div>
+                      <span style={{ fontWeight: 700, color: "#2563eb", whiteSpace: "nowrap" }}>{money(p.salePriceCents)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {selectedProducts.length > 0 && (
+                <div style={{ borderTop: "1px solid var(--border)", padding: "16px 20px", background: "#f8fafc" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    {selectedProducts.map((sp, idx) => (
+                      <div key={sp.product.id} style={{ background: "#fff", borderRadius: 12, padding: 14, border: "1px solid var(--border)" }}>
+                        <div className="row-between"><strong style={{ fontSize: 15 }}>{sp.product.name}</strong><button className="ghost danger" onClick={() => removeProduct(idx)} style={{ padding: 4 }}><X size={16} /></button></div>
+                        <div style={{ display: "flex", gap: 16, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600 }}>Qtd<input type="number" value={sp.quantity} onChange={(e) => updateProductQty(idx, Number(e.target.value))} min={1} style={{ width: 60, padding: "6px 10px", borderRadius: 8, border: "1px solid var(--border)", fontSize: 14, textAlign: "center" }} /></label>
+                          <input value={sp.note} onChange={(e) => updateProductNote(idx, e.target.value)} placeholder="Observação..." style={{ flex: 1, minWidth: 140, padding: "6px 10px", borderRadius: 8, border: "1px solid var(--border)", fontSize: 13 }} />
+                          <span style={{ fontWeight: 700, color: "#2563eb", fontSize: 16, marginLeft: "auto" }}>{money(sp.quantity * sp.product.salePriceCents)}</span>
+                        </div>
+                        <div style={{ marginTop: 10 }}>
+                          <small style={{ color: "var(--text-dim)", display: "block", marginBottom: 6, fontWeight: 600 }}>Adicionais:</small>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                            {additions.filter((a) => a.active).map((add) => {
+                              const sel = sp.selectedAdditions.find((sa) => sa.id === add.id);
+                              return (
+                                <button key={add.id} onClick={() => toggleAddition(idx, add)} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, padding: "5px 12px", borderRadius: 20, border: sel ? "2px solid #2563eb" : "1px solid var(--border)", background: sel ? "#eff6ff" : "transparent", color: sel ? "#1e40af" : "var(--text)", fontWeight: sel ? 700 : 400, cursor: "pointer" }}>
+                                  {add.name} {sel ? `(${sel.qty}x)` : ""} <span style={{ opacity: 0.6 }}>{money(add.valueCents)}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <button onClick={addItems} style={{ marginTop: 14, width: "100%", padding: "12px", background: "linear-gradient(135deg, #2563eb, #1d4ed8)", color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: "pointer" }}><Plus size={18} /> Confirmar {selectedProducts.length} item(ns) — {money(selectedProducts.reduce((s, sp) => s + sp.quantity * sp.product.salePriceCents + sp.selectedAdditions.reduce((a, ad) => a + ad.qty * ad.valueCents, 0), 0))}</button>
+                </div>
+              )}
+            </div>
+          </div>
         )}
 
         {cancelItemId && (
