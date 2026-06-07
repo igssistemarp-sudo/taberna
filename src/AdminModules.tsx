@@ -17,6 +17,51 @@ const reportGroups = [
   { title: "Caixa, financeiro e estoque", items: [["cashbook", "Livro caixa"], ["cash_closing", "Fechamento"], ["payable_summary", "Contas a pagar"], ["receivable_summary", "Contas a receber"], ["flow_cash", "Fluxo de caixa"], ["dre_simplificada", "DRE"], ["stock_current", "Estoque atual"], ["stock_low", "Estoque baixo"], ["cancelled_orders", "Cancelamentos"]] }
 ] as const;
 
+const reportTitleMap: Record<string, string> = {
+  sales_by_period: "Vendas por período",
+  sales_by_day: "Vendas por dia",
+  sales_by_hour: "Vendas por hora",
+  sales_by_weekday: "Dia da semana",
+  sales_by_month: "Vendas por mês",
+  top_products: "Produtos mais vendidos",
+  bottom_products: "Produtos menos vendidos",
+  profit_by_product: "Lucratividade",
+  sales_by_category: "Categorias",
+  top_additions: "Adicionais",
+  additional_revenue: "Faturamento adicionais",
+  top_customers: "Clientes que mais compram",
+  customer_last_purchase: "Última compra",
+  inactive_customers: "Clientes inativos",
+  delivery_by_neighborhood: "Delivery por bairro",
+  delivery_fee_by_neighborhood: "Taxas por bairro",
+  delivery_orders: "Pedidos delivery",
+  delivery_performance: "Entregadores",
+  delivery_driver_commission: "Comissão entregadores",
+  waiter_sales: "Vendas por garçom",
+  waiter_commission: "Comissão garçons",
+  cashbook: "Livro caixa",
+  cash_closing: "Fechamento",
+  payable_summary: "Contas a pagar",
+  receivable_summary: "Contas a receber",
+  flow_cash: "Fluxo de caixa",
+  dre_simplificada: "DRE",
+  stock_current: "Estoque atual",
+  stock_low: "Estoque baixo",
+  cancelled_orders: "Cancelamentos"
+};
+
+function reportDisplayLabel(value: string) {
+  const normalized = value.toLowerCase().replace(/\s+/g, "_").replace(/_+/g, "_").trim();
+  for (const group of reportGroups) {
+    for (const [key, label] of group.items) {
+      const keyNormalized = key.toLowerCase().replace(/\s+/g, "_").replace(/_+/g, "_").trim();
+      const labelNormalized = label.toLowerCase().replace(/\s+/g, "_").replace(/_+/g, "_").trim();
+      if (normalized === keyNormalized || normalized === labelNormalized) return label;
+    }
+  }
+  return reportTitleMap[normalized] ?? reportTitleMap[value] ?? value;
+}
+
 async function api(path: string, options: RequestInit = {}) {
   const token = localStorage.getItem("taberna-token");
   const response = await fetch(`${API_URL}${path}`, { ...options, headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(options.headers ?? {}) } });
@@ -34,6 +79,51 @@ function query(filters: Filters, format = "json") {
 
 function maxValue(rows: Array<{ value: number }>) { return Math.max(1, ...rows.map((item) => item.value)); }
 
+const headerLabels: Record<string, string> = {
+  customer: "Cliente",
+  customerId: "Cliente",
+  customerName: "Cliente",
+  supplier: "Fornecedor",
+  supplierName: "Fornecedor",
+  driver: "Entregador",
+  driverName: "Entregador",
+  waiter: "Garçom",
+  waiterName: "Garçom",
+  paymentMethod: "Forma de pagamento",
+  payment_method: "Forma de pagamento",
+  category: "Categoria",
+  product: "Produto",
+  products: "Produtos",
+  status: "Status",
+  type: "Tipo",
+  date: "Data",
+  hour: "Hora",
+  month: "Mês",
+  value: "Valor",
+  amount: "Valor",
+  total: "Total",
+  quantity: "Quantidade",
+  count: "Quantidade",
+  gross: "Bruto",
+  net: "Líquido",
+  profit: "Lucro",
+  stock: "Estoque",
+  current: "Atual",
+  low: "Baixo",
+  open: "Em aberto",
+  closing: "Fechamento",
+  order: "Pedido",
+  orders: "Pedidos",
+  deliver: "Entrega"
+};
+
+function labelForHeader(header: string) {
+  const normalized = header.replace(/_/g, " ");
+  if (headerLabels[header]) return headerLabels[header];
+  const parts = normalized.split(" ");
+  return parts.map((part) => headerLabels[part.toLowerCase()] ?? part).join(" ");
+}
+
 function DonutChart({ rows, money }: { rows: Array<{ label: string; value: number; color: string }>; money: MoneyFn }) {
   const total = rows.reduce((sum, item) => sum + item.value, 0) || 1;
   let offset = 25;
@@ -48,7 +138,7 @@ function BarList({ rows, money }: { rows: Array<{ label: string; value: number; 
 function ReportTable({ rows, money }: { rows: any[]; money: MoneyFn }) {
   const headers = Object.keys(rows[0] ?? {}).slice(0, 8);
   if (!rows.length) return <div className="admin-empty">Nenhum dado para os filtros selecionados.</div>;
-  return <div className="admin-table-wrap"><table className="admin-table"><thead><tr>{headers.map((header) => <th key={header}>{header.replace(/_/g, " ")}</th>)}</tr></thead><tbody>{rows.slice(0, 80).map((row, index) => <tr key={index}>{headers.map((header) => <td key={header}>{typeof row[header] === "number" && header.match(/valor|total|faturamento|lucro|receita|custo|taxa|fluxo|comissao|ticket|bruto|liquido|desconto|despesa/) ? money(row[header]) : String(row[header] ?? "")}</td>)}</tr>)}</tbody></table></div>;
+  return <div className="admin-table-wrap"><table className="admin-table"><thead><tr>{headers.map((header) => <th key={header}>{labelForHeader(header)}</th>)}</tr></thead><tbody>{rows.slice(0, 80).map((row, index) => <tr key={index}>{headers.map((header) => <td key={header}>{typeof row[header] === "number" && header.match(/valor|total|faturamento|lucro|receita|custo|taxa|fluxo|comissao|ticket|bruto|liquido|desconto|despesa|amount|gross|net|profit|sum|count/) ? money(row[header]) : String(row[header] ?? "")}</td>)}</tr>)}</tbody></table></div>;
 }
 
 export function ExecutiveDashboard({ data, money }: { data: AppData | null; money: MoneyFn }) {
@@ -93,6 +183,7 @@ export function ReportsPro({ data, money }: { data: AppData | null; money: Money
   const [filters, setFilters] = useState<Filters>({ from: monthStart(), to: today(), fromHour: "", toHour: "", userId: "", waiterId: "", driverName: "", customerId: "", neighborhoodId: "", paymentMethod: "" });
   const [report, setReport] = useState("sales_by_period");
   const [rows, setRows] = useState<any[]>([]);
+  const reportLabel = reportDisplayLabel(report);
   async function load() { setRows(await api(`/api/reports/${report}?${query(filters)}`)); }
   useEffect(() => { void load(); }, [report]);
   function setFilter(key: keyof Filters, value: string) { setFilters((state) => ({ ...state, [key]: value })); }
@@ -108,5 +199,5 @@ export function ReportsPro({ data, money }: { data: AppData | null; money: Money
     anchor.click();
     URL.revokeObjectURL(url);
   }
-  return <div className="admin-shell"><section className="admin-hero reports"><div><span>Relatórios gerenciais</span><h2>Gestão completa por filtros</h2><p>Vendas, produtos, delivery, equipe, caixa, financeiro e estoque.</p></div><button onClick={load}><Search size={16} /> Visualizar</button></section><section className="admin-report-filters"><label>Data inicial<input type="date" value={filters.from} onChange={(e) => setFilter("from", e.target.value)} /></label><label>Data final<input type="date" value={filters.to} onChange={(e) => setFilter("to", e.target.value)} /></label><label>Hora inicial<input type="number" min="0" max="23" value={filters.fromHour} onChange={(e) => setFilter("fromHour", e.target.value)} /></label><label>Hora final<input type="number" min="0" max="23" value={filters.toHour} onChange={(e) => setFilter("toHour", e.target.value)} /></label><label>Cliente<select value={filters.customerId} onChange={(e) => setFilter("customerId", e.target.value)}><option value="">Todos</option>{data?.customers?.map((item: any) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>Bairro<select value={filters.neighborhoodId} onChange={(e) => setFilter("neighborhoodId", e.target.value)}><option value="">Todos</option>{data?.neighborhoods?.map((item: any) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>Pagamento<select value={filters.paymentMethod} onChange={(e) => setFilter("paymentMethod", e.target.value)}><option value="">Todos</option>{data?.paymentMethods?.map((item: any) => <option key={item.id} value={item.name}>{item.name}</option>)}</select></label><label>Entregador<input value={filters.driverName} onChange={(e) => setFilter("driverName", e.target.value)} /></label></section><section className="admin-reports-layout"><aside className="admin-report-menu">{reportGroups.map((group) => <div key={group.title}><strong>{group.title}</strong>{group.items.map(([key, label]) => <button key={key} className={report === key ? "active" : ""} onClick={() => setReport(key)}>{label}</button>)}</div>)}</aside><main className="admin-card"><div className="admin-report-head"><div><span>Relatório</span><h3>{report.replace(/_/g, " ")}</h3></div><div><button className="ghost" onClick={() => download("csv")}><FileText size={15} /> CSV</button><button className="ghost" onClick={() => download("xlsx")}><FileSpreadsheet size={15} /> Excel</button><button className="ghost" onClick={() => download("pdf")}><Download size={15} /> PDF</button><button className="ghost" onClick={() => window.print()}><Printer size={15} /> Imprimir</button></div></div><ReportTable rows={rows} money={money} /></main></section></div>;
+  return <div className="admin-shell"><section className="admin-hero reports"><div><span>Relatórios gerenciais</span><h2>Gestão completa por filtros</h2><p>Vendas, produtos, delivery, equipe, caixa, financeiro e estoque.</p></div><div className="admin-report-current"><span>Relatório selecionado</span><strong>{reportLabel}</strong></div><button onClick={load}><Search size={16} /> Visualizar</button></section><section className="admin-report-filters"><label>Data inicial<input type="date" value={filters.from} onChange={(e) => setFilter("from", e.target.value)} /></label><label>Data final<input type="date" value={filters.to} onChange={(e) => setFilter("to", e.target.value)} /></label><label>Hora inicial<input type="number" min="0" max="23" value={filters.fromHour} onChange={(e) => setFilter("fromHour", e.target.value)} /></label><label>Hora final<input type="number" min="0" max="23" value={filters.toHour} onChange={(e) => setFilter("toHour", e.target.value)} /></label><label>Cliente<select value={filters.customerId} onChange={(e) => setFilter("customerId", e.target.value)}><option value="">Todos</option>{data?.customers?.map((item: any) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>Bairro<select value={filters.neighborhoodId} onChange={(e) => setFilter("neighborhoodId", e.target.value)}><option value="">Todos</option>{data?.neighborhoods?.map((item: any) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>Pagamento<select value={filters.paymentMethod} onChange={(e) => setFilter("paymentMethod", e.target.value)}><option value="">Todos</option>{data?.paymentMethods?.map((item: any) => <option key={item.id} value={item.name}>{item.name}</option>)}</select></label><label>Entregador<input value={filters.driverName} onChange={(e) => setFilter("driverName", e.target.value)} /></label></section><section className="admin-reports-layout"><aside className="admin-report-menu">{reportGroups.map((group) => <div key={group.title}><strong>{group.title}</strong>{group.items.map(([key, label]) => <button key={key} className={report === key ? "active" : ""} onClick={() => setReport(key)}>{label}</button>)}</div>)}</aside><main className="admin-card"><div className="admin-report-head"><div><span>Relatório</span><h3>{report.replace(/_/g, " ")}</h3></div><div><button className="ghost" onClick={() => download("csv")}><FileText size={15} /> CSV</button><button className="ghost" onClick={() => download("xlsx")}><FileSpreadsheet size={15} /> Excel</button><button className="ghost" onClick={() => download("pdf")}><Download size={15} /> PDF</button><button className="ghost" onClick={() => window.print()}><Printer size={15} /> Imprimir</button></div></div><ReportTable rows={rows} money={money} /></main></section></div>;
 }

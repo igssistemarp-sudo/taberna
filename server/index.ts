@@ -577,7 +577,7 @@ app.delete("/api/users/:id", requireRole("ADMIN", "GERENTE"), async (req: Authed
   try { await prisma.user.delete({ where: { id: asString(req.params.id) } }); res.status(204).end(); } catch (error) { next(error); }
 });
 
-app.get("/api/neighborhoods", async (_req, res) => res.json(await prisma.neighborhood.findMany({ orderBy: { name: "asc" } })));
+app.get("/api/neighborhoods", async (_req, res) => res.json(await prisma.neighborhood.findMany({ orderBy: { createdAt: "desc" } })));
 app.post("/api/neighborhoods", requireRole("ADMIN", "GERENTE", "CAIXA"), async (req: AuthedRequest, res, next) => {
   try {
     const body = z.object({ name: z.string().min(2), city: z.string().min(2), deliveryFeeCents: z.number().int().default(0), avgDeliveryMinutes: z.number().int().default(30), active: z.boolean().default(true) }).parse(req.body);
@@ -758,7 +758,7 @@ app.delete("/api/customers/:id/addresses/:addrId", requireRole("ADMIN", "GERENTE
   try { await prisma.customerAddress.delete({ where: { id: asString(req.params.addrId) } }); res.status(204).end(); } catch (error) { next(error); }
 });
 
-app.get("/api/categories", async (_req, res) => res.json(await prisma.productCategory.findMany({ include: { products: true }, orderBy: { name: "asc" } })));
+app.get("/api/categories", async (_req, res) => res.json(await prisma.productCategory.findMany({ include: { products: true }, orderBy: { createdAt: "desc" } })));
 app.post("/api/categories", requireRole("ADMIN", "GERENTE", "CAIXA"), async (req: AuthedRequest, res, next) => { try { const body = z.object({ name: z.string().min(2), active: z.boolean().default(true) }).parse(req.body); const created = await prisma.productCategory.create({ data: body }); res.status(201).json(created); } catch (error) { next(error); } });
 app.put("/api/categories/:id", requireRole("ADMIN", "GERENTE", "CAIXA"), async (req: AuthedRequest, res, next) => { try { const body = z.object({ name: z.string().min(2).optional(), active: z.boolean().optional() }).parse(req.body); res.json(await prisma.productCategory.update({ where: { id: asString(req.params.id) }, data: body })); } catch (error) { next(error); } });
 app.delete("/api/categories/:id", requireRole("ADMIN", "GERENTE"), async (req: AuthedRequest, res, next) => { try { await prisma.productCategory.delete({ where: { id: asString(req.params.id) } }); res.status(204).end(); } catch (error) { next(error); } });
@@ -786,7 +786,7 @@ const productSchema = z.object({
 
 const productUpdateSchema = productSchema.partial();
 
-app.get("/api/products", async (_req, res) => res.json(await prisma.product.findMany({ include: { category: true, photos: { orderBy: { sortOrder: "asc" } }, recipeIngredients: true, comboItems: { include: { child: true } }, productAdditions: { include: { addition: true } } }, orderBy: { code: "asc" } })));
+app.get("/api/products", async (_req, res) => res.json(await prisma.product.findMany({ include: { category: true, photos: { orderBy: { sortOrder: "asc" } }, recipeIngredients: true, comboItems: { include: { child: true } }, productAdditions: { include: { addition: true } } }, orderBy: { createdAt: "desc" } })));
 
 app.get("/api/products/:id", async (req, res, next) => {
   try { const item = await prisma.product.findUnique({ where: { id: asString(req.params.id) }, include: { category: true, photos: { orderBy: { sortOrder: "asc" } }, recipeIngredients: true, comboItems: { include: { child: true } }, productAdditions: { include: { addition: true } } } }); res.json(item); }
@@ -853,7 +853,7 @@ app.post("/api/additions", requireRole("ADMIN", "GERENTE", "CAIXA"), async (req:
 app.put("/api/additions/:id", requireRole("ADMIN", "GERENTE", "CAIXA"), async (req: AuthedRequest, res, next) => { try { const body = z.object({ name: z.string().min(2).optional(), valueCents: z.number().int().optional(), charge: z.boolean().optional(), category: optionalText, active: z.boolean().optional() }).parse(req.body); res.json(await prisma.additional.update({ where: { id: asString(req.params.id) }, data: body })); } catch (error) { next(error); } });
 app.delete("/api/additions/:id", requireRole("ADMIN", "GERENTE"), async (req: AuthedRequest, res, next) => { try { await prisma.additional.delete({ where: { id: asString(req.params.id) } }); res.status(204).end(); } catch (error) { next(error); } });
 
-app.get("/api/payment-methods", async (_req, res) => res.json(await prisma.paymentMethod.findMany({ orderBy: { name: "asc" } })));
+app.get("/api/payment-methods", async (_req, res) => res.json(await prisma.paymentMethod.findMany({ orderBy: { createdAt: "desc" } })));
 app.post("/api/payment-methods", requireRole("ADMIN", "GERENTE", "CAIXA"), async (req: AuthedRequest, res, next) => { try { const body = z.object({ name: z.string().min(2), allowFee: z.boolean().default(false), active: z.boolean().default(true) }).parse(req.body); res.status(201).json(await prisma.paymentMethod.create({ data: body })); } catch (error) { next(error); } });
 app.put("/api/payment-methods/:id", requireRole("ADMIN", "GERENTE", "CAIXA"), async (req: AuthedRequest, res, next) => { try { const body = z.object({ name: z.string().min(2).optional(), allowFee: z.boolean().optional(), active: z.boolean().optional() }).parse(req.body); res.json(await prisma.paymentMethod.update({ where: { id: asString(req.params.id) }, data: body })); } catch (error) { next(error); } });
 app.delete("/api/payment-methods/:id", requireRole("ADMIN", "GERENTE"), async (req: AuthedRequest, res, next) => { try { await prisma.paymentMethod.delete({ where: { id: asString(req.params.id) } }); res.status(204).end(); } catch (error) { next(error); } });
@@ -862,6 +862,28 @@ const tableStatuses = ["LIVRE", "OCUPADA", "AGUARDANDO_PREPARO", "PRONTO", "FECH
 
 app.get("/api/tables", async (_req, res) => res.json(await prisma.serviceTable.findMany({ orderBy: { name: "asc" } })));
 app.post("/api/tables", requireRole("ADMIN", "GERENTE", "CAIXA", "GARCOM"), async (req: AuthedRequest, res, next) => { try { const body = z.object({ name: z.string().min(2), status: z.enum(tableStatuses).default("LIVRE"), waiterName: optionalText, customerName: optionalText, active: z.boolean().default(true), notes: optionalText }).parse(req.body); res.status(201).json(await prisma.serviceTable.create({ data: body })); } catch (error) { next(error); } });
+app.post("/api/tables/bulk", requireRole("ADMIN", "GERENTE", "CAIXA"), async (req: AuthedRequest, res, next) => {
+  try {
+    const body = z.object({ quantity: z.number().int().min(1).max(500).optional(), endAt: z.number().int().min(1).optional(), prefix: z.string().min(1).default("Mesa"), startAt: z.number().int().min(1).default(1), padWidth: z.number().int().min(0).max(4).default(0), deactivateExtra: z.boolean().default(false) }).refine((value) => value.quantity !== undefined || value.endAt !== undefined, { message: "Informe quantidade ou intervalo final." }).parse(req.body);
+    const endAt = body.endAt ?? (body.startAt + (body.quantity ?? 1) - 1);
+    const desiredNumbers = Array.from({ length: endAt - body.startAt + 1 }, (_, index) => body.startAt + index);
+    const formatNumber = (value: number) => body.padWidth > 0 ? String(value).padStart(body.padWidth, "0") : String(value);
+    const desiredNames = desiredNumbers.map((value) => `${body.prefix.trim()} ${formatNumber(value)}`);
+    const existing = await prisma.serviceTable.findMany({ where: { name: { in: desiredNames } }, select: { name: true } });
+    const existingNames = new Set(existing.map((item) => item.name));
+    const missingNames = desiredNames.filter((name) => !existingNames.has(name));
+    if (missingNames.length) {
+      await prisma.serviceTable.createMany({ data: missingNames.map((name) => ({ name, status: "LIVRE", active: true })) });
+    }
+    await prisma.serviceTable.updateMany({ where: { name: { in: desiredNames } }, data: { active: true } });
+    if (body.deactivateExtra) {
+      await prisma.serviceTable.updateMany({ where: { AND: [{ name: { startsWith: `${body.prefix.trim()} ` } }, { name: { notIn: desiredNames } }] }, data: { active: false } });
+    }
+    res.status(201).json({ created: missingNames.length, requested: desiredNames.length, totalExisting: existing.length + missingNames.length, names: desiredNames });
+  } catch (error) { next(error); }
+});
+app.post("/api/tables/activate-all", requireRole("ADMIN", "GERENTE", "CAIXA"), async (_req, res, next) => { try { await prisma.serviceTable.updateMany({ data: { active: true } }); res.json({ ok: true }); } catch (error) { next(error); } });
+app.post("/api/tables/deactivate-all", requireRole("ADMIN", "GERENTE", "CAIXA"), async (_req, res, next) => { try { await prisma.serviceTable.updateMany({ data: { active: false } }); res.json({ ok: true }); } catch (error) { next(error); } });
 app.put("/api/tables/:id", requireRole("ADMIN", "GERENTE", "CAIXA", "GARCOM"), async (req: AuthedRequest, res, next) => { try { const body = z.object({ name: z.string().min(2).optional(), status: z.enum(tableStatuses).optional(), waiterName: optionalText, customerName: optionalText, active: z.boolean().optional(), notes: optionalText }).parse(req.body); res.json(await prisma.serviceTable.update({ where: { id: asString(req.params.id) }, data: body })); } catch (error) { next(error); } });
 app.delete("/api/tables/:id", requireRole("ADMIN", "GERENTE"), async (req: AuthedRequest, res, next) => { try { await prisma.serviceTable.delete({ where: { id: asString(req.params.id) } }); res.status(204).end(); } catch (error) { next(error); } });
 
@@ -897,9 +919,9 @@ app.get("/api/tables/:id/logs", async (req, res, next) => {
   try { const logs = await prisma.tableLog.findMany({ where: { tableId: asString(req.params.id) }, orderBy: { createdAt: "desc" }, take: 50, include: { user: { select: { name: true } } } }); res.json(logs); } catch (error) { next(error); }
 });
 
-app.get("/api/suppliers", async (_req, res) => res.json(await prisma.supplier.findMany({ orderBy: { name: "asc" } })));
-app.post("/api/suppliers", requireRole("ADMIN", "GERENTE", "CAIXA"), async (req: AuthedRequest, res, next) => { try { const body = z.object({ name: z.string().min(2), document: optionalText, phone: optionalText, email: optionalText, active: z.boolean().default(true) }).parse(req.body); res.status(201).json(await prisma.supplier.create({ data: body })); } catch (error) { next(error); } });
-app.put("/api/suppliers/:id", requireRole("ADMIN", "GERENTE", "CAIXA"), async (req: AuthedRequest, res, next) => { try { const body = z.object({ name: z.string().min(2).optional(), document: optionalText, phone: optionalText, email: optionalText, active: z.boolean().optional() }).parse(req.body); res.json(await prisma.supplier.update({ where: { id: asString(req.params.id) }, data: body })); } catch (error) { next(error); } });
+app.get("/api/suppliers", async (_req, res) => res.json(await prisma.supplier.findMany({ orderBy: { name: "asc" }, include: { payables: { orderBy: { createdAt: "desc" } } } })));
+app.post("/api/suppliers", requireRole("ADMIN", "GERENTE", "CAIXA"), async (req: AuthedRequest, res, next) => { try { const body = z.object({ name: z.string().min(2), tradeName: optionalText, typePerson: z.enum(["PF", "PJ"]).default("PJ"), status: z.enum(["ATIVO", "INATIVO", "BLOQUEADO"]).default("ATIVO"), document: optionalText, ie: optionalText, im: optionalText, activity: optionalText, phone: optionalText, phone2: optionalText, whatsapp: optionalText, email: optionalText, financeEmail: optionalText, site: optionalText, instagram: optionalText, facebook: optionalText, sellerName: optionalText, sellerPhone: optionalText, sellerWhatsapp: optionalText, sellerEmail: optionalText, cep: optionalText, street: optionalText, number: optionalText, complement: optionalText, district: optionalText, city: optionalText, state: optionalText, reference: optionalText, paymentTerm: optionalText, creditLimitCents: z.number().int().default(0), minimumOrderCents: z.number().int().default(0), visitDay: optionalText, deliveryFrequency: optionalText, bankName: optionalText, agency: optionalText, account: optionalText, pixKey: optionalText, pixType: optionalText, holderName: optionalText, classification: optionalText, notes: optionalText, active: z.boolean().default(true) }).parse(req.body); res.status(201).json(await prisma.supplier.create({ data: { ...body, active: body.status === "ATIVO" ? body.active : false } })); } catch (error) { next(error); } });
+app.put("/api/suppliers/:id", requireRole("ADMIN", "GERENTE", "CAIXA"), async (req: AuthedRequest, res, next) => { try { const body = z.object({ name: z.string().min(2).optional(), tradeName: optionalText, typePerson: z.enum(["PF", "PJ"]).optional(), status: z.enum(["ATIVO", "INATIVO", "BLOQUEADO"]).optional(), document: optionalText, ie: optionalText, im: optionalText, activity: optionalText, phone: optionalText, phone2: optionalText, whatsapp: optionalText, email: optionalText, financeEmail: optionalText, site: optionalText, instagram: optionalText, facebook: optionalText, sellerName: optionalText, sellerPhone: optionalText, sellerWhatsapp: optionalText, sellerEmail: optionalText, cep: optionalText, street: optionalText, number: optionalText, complement: optionalText, district: optionalText, city: optionalText, state: optionalText, reference: optionalText, paymentTerm: optionalText, creditLimitCents: z.number().int().optional(), minimumOrderCents: z.number().int().optional(), visitDay: optionalText, deliveryFrequency: optionalText, bankName: optionalText, agency: optionalText, account: optionalText, pixKey: optionalText, pixType: optionalText, holderName: optionalText, classification: optionalText, notes: optionalText, active: z.boolean().optional() }).parse(req.body); const active = typeof body.active === "boolean" ? body.active : body.status ? body.status === "ATIVO" : undefined; res.json(await prisma.supplier.update({ where: { id: asString(req.params.id) }, data: { ...body, ...(active !== undefined ? { active, status: active ? "ATIVO" : (body.status ?? "INATIVO") } : {}) } })); } catch (error) { next(error); } });
 app.delete("/api/suppliers/:id", requireRole("ADMIN", "GERENTE"), async (req: AuthedRequest, res, next) => { try { await prisma.supplier.delete({ where: { id: asString(req.params.id) } }); res.status(204).end(); } catch (error) { next(error); } });
 
 app.get("/api/printers", async (_req, res) => res.json(await prisma.printerConfig.findMany({ orderBy: { name: "asc" } })));

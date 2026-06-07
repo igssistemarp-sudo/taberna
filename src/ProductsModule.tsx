@@ -27,6 +27,43 @@ function calcSaleFromMargin(cost: number, margin: number) { return Math.round(co
 
 function productPhoto(p: Product) { return p.photoUrl || p.photos?.[0]?.url || undefined; }
 
+async function fileToCompressedDataUrl(file: File, maxSize = 900, quality = 0.82) {
+  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
+
+  const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
+  const width = Math.max(1, Math.round(image.width * scale));
+  const height = Math.max(1, Math.round(image.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return fileToDataUrl(file);
+  ctx.drawImage(image, 0, 0, width, height);
+  URL.revokeObjectURL(image.src);
+
+  return await new Promise<string>((resolve) => {
+    canvas.toBlob((blob) => {
+      if (!blob) return resolve(fileToDataUrl(file));
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.readAsDataURL(blob);
+    }, file.type === "image/png" ? "image/png" : "image/jpeg", quality);
+  });
+}
+
+function fileToDataUrl(file: File) {
+  return new Promise<string>((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function ProductsModule({ data, mutate, money }: { data: { products: Product[]; categories: Array<{ id: string; name: string; sortOrder: number; active: boolean }> } | null; mutate: (path: string, options?: RequestInit) => Promise<void>; money: MoneyFn }) {
   const [draft, setDraft] = React.useState<ProductDraft>(emptyDraft());
   const [editingId, setEditingId] = React.useState<string | null>(null);
@@ -42,6 +79,10 @@ export default function ProductsModule({ data, mutate, money }: { data: { produc
 
   const products = data?.products ?? [];
   const categories = data?.categories ?? [];
+  const activeCount = products.filter((p) => p.active).length;
+  const photoCount = products.filter((p) => productPhoto(p)).length;
+  const featuredCount = products.filter((p) => p.featured).length;
+  const lowStockCount = products.filter((p) => p.controlStock && p.stockCurrent <= p.stockMin).length;
 
   const filteredProducts = products.filter((p) => {
     if (filter.search && !p.name.toLowerCase().includes(filter.search.toLowerCase()) && !String(p.code).includes(filter.search) && !(p.barcode && p.barcode.includes(filter.search)) && !(p.internalCode && p.internalCode.toLowerCase().includes(filter.search.toLowerCase()))) return false;
@@ -148,21 +189,35 @@ export default function ProductsModule({ data, mutate, money }: { data: { produc
   const profitDraft = draft.salePriceCents - draft.costCents;
 
   return (
-    <div className="stack">
+    <div className="stack products-module">
       {error && <div className="toast" style={{ position: "static", marginBottom: 8 }}>{error}<button className="ghost" style={{ marginLeft: 8 }} onClick={() => setError(null)}>OK</button></div>}
       {loading && <div className="loading-bar" />}
+      <section className="products-hero">
+        <div>
+          <span>Cadastro de Produtos</span>
+          <h2>Cardápio, foto, preço e estoque</h2>
+          <p>Controle visual para criar, editar, duplicar e organizar seus produtos mais rápido.</p>
+        </div>
+        <div className="products-kpis">
+          <article><strong>{products.length}</strong><span>Produtos</span></article>
+          <article><strong>{activeCount}</strong><span>Ativos</span></article>
+          <article><strong>{photoCount}</strong><span>Com foto</span></article>
+          <article><strong>{lowStockCount}</strong><span>Estoque baixo</span></article>
+          <article><strong>{featuredCount}</strong><span>Destaque</span></article>
+        </div>
+      </section>
       {/* Header */}
       <div className="row-between">
-        <div><h2 style={{ margin: 0 }}><Package2 size={22} style={{ marginRight: 8, color: "#2563eb" }} />Produtos</h2><span style={{ color: "var(--text-muted)", fontSize: 13 }}>{products.length} cadastrados</span></div>
+        <div><h2 style={{ margin: 0 }}><Package2 size={22} style={{ marginRight: 8, color: "#059669" }} />Produtos</h2><span style={{ color: "var(--text-muted)", fontSize: 13 }}>{products.length} cadastrados</span></div>
         <div className="row-actions">
           <button className={showCategories ? "active" : "ghost"} onClick={() => setShowCategories(!showCategories)} style={{ borderRadius: 10, padding: "8px 16px" }}><Filter size={15} /> Grupos</button>
-          <button onClick={openNew} style={{ background: "linear-gradient(135deg, #2563eb, #1d4ed8)", border: "none", borderRadius: 10, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(37,99,235,0.3)" }}><Plus size={15} /> Novo Produto</button>
+          <button onClick={openNew} style={{ background: "linear-gradient(135deg, #059669, #0d9488)", border: "none", borderRadius: 10, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(5,150,105,0.3)" }}><Plus size={15} /> Novo Produto</button>
         </div>
       </div>
 
       {/* Categories panel */}
       {showCategories && (
-        <div className="panel" style={{ border: "1px solid #e2e8f0", borderRadius: 16, padding: 20, background: "#fff" }}>
+        <div className="panel products-category-panel" style={{ border: "1px solid #e2e8f0", borderRadius: 16, padding: 20, background: "#fff" }}>
           <h3 style={{ margin: "0 0 12px", fontSize: 15, color: "#1e293b" }}>Grupos / Categorias</h3>
           <div className="row-between" style={{ marginBottom: 12, gap: 8, flexWrap: "wrap" }}>
             <div className="row-actions" style={{ gap: 8 }}>
@@ -189,7 +244,7 @@ export default function ProductsModule({ data, mutate, money }: { data: { produc
       )}
 
       {/* Search & Filters */}
-      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 16, padding: "14px 18px" }}>
+      <div className="products-toolbar">
         <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
           <Search size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }} />
           <input placeholder="Buscar por nome, código, código de barras ou código interno..." value={filter.search} onChange={(e) => setFilter((s) => ({ ...s, search: e.target.value }))} autoFocus style={{ width: "100%", padding: "10px 14px 10px 36px", borderRadius: 10, border: "2px solid #e2e8f0", fontSize: 13, outline: "none", boxSizing: "border-box", transition: "border-color 0.15s" }} onFocus={(e) => e.target.style.borderColor = "#2563eb"} onBlur={(e) => e.target.style.borderColor = "#e2e8f0"} />
@@ -206,24 +261,29 @@ export default function ProductsModule({ data, mutate, money }: { data: { produc
       </div>
 
       {/* Product Grid */}
-      <div style={{ display: "grid", gap: 8 }}>
+      <div className="products-grid">
         {filteredProducts.map((p) => (
-          <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderRadius: 12, border: `1px solid ${p.active ? "#e2e8f0" : "#fecaca"}`, background: p.active ? "#fff" : "#fef2f2", transition: "all 0.12s", cursor: "pointer" }} onClick={() => openEdit(p)} onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#2563eb44"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(37,99,235,0.06)"; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = p.active ? "#e2e8f0" : "#fecaca"; e.currentTarget.style.boxShadow = "none"; }}>
+          <div key={p.id} className={`product-row ${p.active ? "" : "inactive"}`} onClick={() => openEdit(p)}>
             {productPhoto(p) ? (
-              <img src={productPhoto(p)} alt={p.name} style={{ width: 52, height: 52, borderRadius: 10, objectFit: "cover", flexShrink: 0, border: "1px solid #e2e8f0" }} onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; (e.target as HTMLImageElement).parentElement!.querySelector(".fallback")?.removeAttribute("style"); }} />
+              <img src={productPhoto(p)} alt={p.name} className="product-photo" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; (e.target as HTMLImageElement).parentElement!.querySelector(".fallback")?.removeAttribute("style"); }} />
             ) : null}
-            <div className="fallback" style={{ width: 52, height: 52, borderRadius: 10, background: `linear-gradient(135deg, ${p.active ? "#2563eb" : "#94a3b8"}22, ${p.active ? "#1d4ed8" : "#64748b"}11)`, display: productPhoto(p) ? "none" : "grid", placeItems: "center", color: p.active ? "#2563eb" : "#94a3b8", fontWeight: 700, fontSize: 16, flexShrink: 0, border: `1px solid ${p.active ? "#2563eb33" : "#e2e8f0"}` }}>#{p.code}</div>
+            <div className="fallback product-fallback" style={{ display: productPhoto(p) ? "none" : "grid" }}>#{p.code}</div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <strong style={{ display: "block", fontSize: 14, color: "#1e293b" }}>{p.name} {!p.active && <span style={{ fontSize: 11, color: "#ef4444", fontWeight: 600 }}>(inativo)</span>}</strong>
-              <div style={{ display: "flex", gap: 12, fontSize: 12, color: "#64748b", marginTop: 2 }}>
+              <strong style={{ display: "block", fontSize: 14, color: "var(--text)" }}>{p.name} {!p.active && <span style={{ fontSize: 11, color: "#f87171", fontWeight: 600 }}>(inativo)</span>}</strong>
+              <div className="product-meta" style={{ display: "flex", gap: 12, fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
                 {p.category?.name && <span>{p.category.name}</span>}
-                {p.shortDescription && <span style={{ color: "#94a3b8" }}>• {p.shortDescription}</span>}
+                {p.shortDescription && <span>• {p.shortDescription}</span>}
+              </div>
+              <div className="product-badges">
+                <span className={p.controlStock ? "badge green" : "badge muted"}>{p.controlStock ? `Estoque ${p.stockCurrent}` : "Sem controle de estoque"}</span>
+                <span className="badge">{p.printTarget}</span>
+                {p.featured && <span className="badge accent">Destaque</span>}
               </div>
             </div>
             <div style={{ display: "flex", gap: 16, alignItems: "center", flexShrink: 0 }}>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontWeight: 700, fontSize: 15, color: "#1e293b" }}>{p.promoPriceCents && p.promoPriceCents > 0 ? <><small style={{ textDecoration: "line-through", color: "#94a3b8", fontWeight: 400, fontSize: 12 }}>{money(p.salePriceCents)}</small> <span style={{ color: "#059669" }}>{money(p.promoPriceCents)}</span></> : money(p.salePriceCents)}</div>
-                <div style={{ fontSize: 11, color: p.marginPercent > 50 ? "#10b981" : p.marginPercent > 20 ? "#f59e0b" : "#ef4444", fontWeight: 600 }}>{p.marginPercent}% margem</div>
+              <div className="product-price-box" style={{ textAlign: "right" }}>
+                <div style={{ fontWeight: 700, fontSize: 15, color: "var(--text)" }}>{p.promoPriceCents && p.promoPriceCents > 0 ? <><small style={{ textDecoration: "line-through", color: "var(--text-dim)", fontWeight: 400, fontSize: 12 }}>{money(p.salePriceCents)}</small> <span style={{ color: "#34d399" }}>{money(p.promoPriceCents)}</span></> : money(p.salePriceCents)}</div>
+                <div className="product-margin" style={{ fontSize: 11, color: p.marginPercent > 50 ? "#34d399" : p.marginPercent > 20 ? "#f59e0b" : "#f87171", fontWeight: 600 }}>{p.marginPercent}% margem</div>
               </div>
               <div style={{ display: "flex", gap: 4 }}>
                 <button onClick={(e) => { e.stopPropagation(); duplicate(p); }} className="ghost" style={{ padding: 6, borderRadius: 8 }} title="Duplicar"><Copy size={14} /></button>
@@ -234,54 +294,54 @@ export default function ProductsModule({ data, mutate, money }: { data: { produc
           </div>
         ))}
         {filteredProducts.length === 0 && (
-          <div style={{ textAlign: "center", padding: 40, color: "#94a3b8", background: "#fff", borderRadius: 12, border: "1px dashed #e2e8f0" }}>
-            <Package2 size={40} style={{ color: "#cbd5e1", marginBottom: 8 }} />
+            <div className="products-empty">
+            <Package2 size={40} style={{ color: "var(--text-dim)", marginBottom: 8 }} />
             <p style={{ margin: 0, fontSize: 15 }}>Nenhum produto encontrado.</p>
-            <p style={{ margin: "4px 0 0", fontSize: 13 }}>Tente alterar os filtros ou <button onClick={openNew} style={{ background: "none", border: "none", color: "#2563eb", fontWeight: 600, cursor: "pointer", padding: 0, textDecoration: "underline", fontSize: 13 }}>criar um novo produto</button>.</p>
-          </div>
+            <p style={{ margin: "4px 0 0", fontSize: 13 }}>Tente alterar os filtros ou <button onClick={openNew} style={{ background: "none", border: "none", color: "var(--accent-light)", fontWeight: 600, cursor: "pointer", padding: 0, textDecoration: "underline", fontSize: 13 }}>criar um novo produto</button>.</p>
+            </div>
         )}
       </div>
 
       {/* Form Modal */}
       {showForm && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.6)", zIndex: 998, display: "grid", placeItems: "center", backdropFilter: "blur(4px)" }} onClick={() => setShowForm(false)}>
-          <div style={{ background: "#fff", borderRadius: 20, width: 780, maxWidth: "96vw", maxHeight: "92vh", display: "flex", flexDirection: "column", boxShadow: "0 25px 80px rgba(37,99,235,0.15)", overflow: "hidden" }} onClick={(e) => e.stopPropagation()}>
-            <div className="row-between" style={{ padding: "16px 24px", borderBottom: "1px solid #e2e8f0", background: "#f8fafc" }}>
+        <div className="products-modal-overlay" onClick={() => setShowForm(false)}>
+          <div className="products-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="row-between products-modal-header">
               <div>
-                <h3 style={{ margin: 0, fontSize: 17, color: "#1e293b" }}><Package2 size={18} style={{ marginRight: 8, color: "#2563eb" }} />{editingId ? "Editar" : "Novo"} Produto</h3>
-                {editingId && <span style={{ fontSize: 12, color: "#64748b" }}>Código #{products.find((p) => p.id === editingId)?.code}</span>}
+                <h3 className="products-modal-title"><Package2 size={18} />{editingId ? "Editar" : "Novo"} Produto</h3>
+                {editingId && <span className="products-modal-subtitle">Código #{products.find((p) => p.id === editingId)?.code}</span>}
               </div>
               <button className="ghost" onClick={() => setShowForm(false)} style={{ borderRadius: 10, padding: 6 }}><X size={18} /></button>
             </div>
 
             {/* Tabs */}
-            <div style={{ padding: "12px 24px 0", borderBottom: "1px solid #e2e8f0", display: "flex", gap: 4, overflowX: "auto" }}>
+            <div className="products-modal-tabs">
               {([["geral", "Dados Gerais"], ["precos", "Preços"], ["estoque", "Estoque"], ["ficha", "Ficha Técnica"], ["adicionais", "Adicionais"], ["entrega", "Disponibilidade"]] as const).map(([key, label]) => (
-                <button key={key} onClick={() => setTab(key)} style={{ padding: "8px 16px", borderRadius: "8px 8px 0 0", border: "none", borderBottom: tab === key ? "2px solid #2563eb" : "2px solid transparent", background: tab === key ? "#eff6ff" : "transparent", cursor: "pointer", fontSize: 13, fontWeight: tab === key ? 700 : 400, color: tab === key ? "#2563eb" : "#64748b", transition: "all 0.12s", whiteSpace: "nowrap" }}>{label}</button>
+                <button key={key} onClick={() => setTab(key)} className={tab === key ? "active" : ""}>{label}</button>
               ))}
             </div>
 
-            <div style={{ flex: 1, overflow: "auto", padding: "20px 24px" }}>
+            <div className="products-modal-body">
               {/* Dados Gerais */}
               {tab === "geral" && (
                 <div>
                   {/* Photo Upload */}
-                  <div style={{ display: "flex", gap: 16, alignItems: "flex-start", marginBottom: 16, padding: 16, background: "#f8fafc", borderRadius: 12, border: "1px solid #e2e8f0" }}>
-                    <div style={{ width: 88, height: 88, borderRadius: 12, overflow: "hidden", flexShrink: 0, border: "2px dashed #cbd5e1", display: "grid", placeItems: "center", position: "relative", background: draft.photoUrl ? "none" : "#fff" }}>
+                  <div className="product-photo-panel">
+                    <div className="product-photo-preview">
                       {draft.photoUrl ? (
-                        <img src={draft.photoUrl} alt="preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={(e) => { (e.target as HTMLImageElement).src = ""; (e.target as HTMLImageElement).style.display = "none"; }} />
+                        <img src={draft.photoUrl} alt="preview" onError={(e) => { (e.target as HTMLImageElement).src = ""; (e.target as HTMLImageElement).style.display = "none"; }} />
                       ) : (
-                        <span style={{ fontSize: 11, color: "#94a3b8", textAlign: "center", padding: 4 }}>Sem foto</span>
+                        <span>Sem foto</span>
                       )}
                     </div>
-                    <div style={{ flex: 1 }}>
-                      <strong style={{ display: "block", fontSize: 13, color: "#475569", marginBottom: 6 }}>Foto do Produto</strong>
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        <label style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#475569", display: "flex", alignItems: "center", gap: 6 }}>
-                          <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const file = e.target.files?.[0]; if (file) { const reader = new FileReader(); reader.onload = (ev) => { setDraft((s) => ({ ...s, photoUrl: ev.target?.result as string })); }; reader.readAsDataURL(file); } }} /> Enviar Foto
+                    <div className="product-photo-actions">
+                      <strong>Foto do Produto</strong>
+                      <div className="product-photo-row">
+                        <label className="product-photo-upload">
+                          <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const file = e.target.files?.[0]; if (file) { void (async () => { const dataUrl = await fileToCompressedDataUrl(file); setDraft((s) => ({ ...s, photoUrl: dataUrl })); })(); } }} /> Enviar Foto
                         </label>
-                        <input value={draft.photoUrl} onChange={(e) => setDraft((s) => ({ ...s, photoUrl: e.target.value }))} placeholder="Ou cole uma URL da foto..." style={{ flex: 1, minWidth: 180, padding: "6px 10px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12, outline: "none" }} />
-                        {draft.photoUrl && <button className="ghost" onClick={() => setDraft((s) => ({ ...s, photoUrl: "" }))} style={{ padding: "6px 10px", borderRadius: 8, fontSize: 12 }}><X size={14} /></button>}
+                        <input value={draft.photoUrl} onChange={(e) => setDraft((s) => ({ ...s, photoUrl: e.target.value }))} placeholder="Ou cole uma URL da foto..." className="product-photo-input" />
+                        {draft.photoUrl && <button className="ghost product-photo-clear" onClick={() => setDraft((s) => ({ ...s, photoUrl: "" }))}><X size={14} /></button>}
                       </div>
                     </div>
                   </div>
@@ -376,9 +436,9 @@ export default function ProductsModule({ data, mutate, money }: { data: { produc
               )}
             </div>
 
-            <div style={{ padding: "16px 24px", borderTop: "1px solid #e2e8f0", display: "flex", gap: 10, justifyContent: "flex-end", background: "#f8fafc" }}>
+            <div className="products-modal-footer">
               <button className="ghost" onClick={() => setShowForm(false)} style={{ borderRadius: 10, padding: "10px 20px", fontSize: 14 }}>Cancelar</button>
-              <button onClick={save} style={{ background: "linear-gradient(135deg, #2563eb, #1d4ed8)", border: "none", borderRadius: 10, padding: "10px 24px", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(37,99,235,0.3)" }}><DollarSign size={16} /> {editingId ? "Atualizar" : "Criar"} Produto</button>
+              <button onClick={save} className="products-save-btn"><DollarSign size={16} /> {editingId ? "Atualizar" : "Criar"} Produto</button>
             </div>
           </div>
         </div>

@@ -359,10 +359,47 @@ model ServiceTable {
 model Supplier {
   id        String   @id @default(cuid())
   name      String
-  document  String?
-  phone     String?
-  email     String?
+  tradeName String?
+  typePerson String @default("PJ")
+  status    String   @default("ATIVO")
   active    Boolean  @default(true)
+  document  String?
+  ie        String?
+  im        String?
+  activity  String?
+  phone     String?
+  phone2    String?
+  whatsapp  String?
+  email     String?
+  financeEmail String?
+  site      String?
+  instagram String?
+  facebook  String?
+  sellerName String?
+  sellerPhone String?
+  sellerWhatsapp String?
+  sellerEmail String?
+  cep       String?
+  street    String?
+  number    String?
+  complement String?
+  district  String?
+  city      String?
+  state     String?
+  reference String?
+  paymentTerm String?
+  creditLimitCents Int @default(0)
+  minimumOrderCents Int @default(0)
+  visitDay  String?
+  deliveryFrequency String?
+  bankName  String?
+  agency    String?
+  account   String?
+  pixKey    String?
+  pixType   String?
+  holderName String?
+  classification String? @default("Padrão")
+  notes     String?
   payables  Payable[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

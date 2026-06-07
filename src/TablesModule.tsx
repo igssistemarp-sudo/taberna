@@ -47,8 +47,24 @@ function calcTotal(items: Array<{ quantity: number; unitPriceCents: number; canc
   }, 0);
 }
 
+function DiningTableIcon({ size = 24 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="7" cy="5.5" r="1.8" />
+      <circle cx="17" cy="5.5" r="1.8" />
+      <path d="M4 10.5v6.2" />
+      <path d="M20 10.5v6.2" />
+      <path d="M6 9.5h12l1.1 2.6H4.9L6 9.5Z" />
+      <path d="M7.5 12.1l-1.2 7.2" />
+      <path d="M16.5 12.1l1.2 7.2" />
+      <path d="M8.8 19.1h6.4" />
+    </svg>
+  );
+}
+
 export default function TablesModule({ data: initialData, money, mutate: reload }: { data: { tables: TableData[]; products: ProductData[]; additions: AdditionData[]; customers: CustomerData[]; paymentMethods: PaymentMethodData[]; orders: any[]; company: any; user: any; users: any[] } | null; money: MoneyFn; mutate: (path: string, options?: RequestInit) => Promise<void> }) {
-  const [tables, setTables] = React.useState<TableData[]>(initialData?.tables ?? []);
+  const mesaOnly = (list: TableData[]) => list.filter((table) => table.name.toLowerCase().startsWith("mesa"));
+  const [tables, setTables] = React.useState<TableData[]>(mesaOnly(initialData?.tables ?? []));
   const [selectedTable, setSelectedTable] = React.useState<TableData | null>(null);
   const [orders, setOrders] = React.useState<any[]>([]);
   const [view, setView] = React.useState<"grid" | "order" | "payment">("grid");
@@ -79,7 +95,7 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
   const [showPrintDialog, setShowPrintDialog] = React.useState(false);
   const [paidOrderId, setPaidOrderId] = React.useState<string | null>(null);
 
-  React.useEffect(() => { if (initialData) setTables(initialData.tables); }, [initialData]);
+  React.useEffect(() => { if (initialData) setTables(mesaOnly(initialData.tables)); }, [initialData]);
 
   async function loadTableOrders() {
     if (!selectedTable) return;
@@ -159,7 +175,7 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
     try {
       if (doPrint) await api(`/api/orders/${paidOrderId}/reprint`, { method: "POST" }).catch(() => {});
       await reload("/api/company", {});
-      const updated = await api("/api/tables");
+      const updated = mesaOnly(await api("/api/tables"));
       setTables(updated);
       setView("grid");
       setSelectedTable(null);
@@ -177,7 +193,7 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
     setLoading(true);
     try {
       await api(`/api/tables/${selectedTable.id}/cancel`, { method: "POST" });
-      setTables(await api("/api/tables"));
+      setTables(mesaOnly(await api("/api/tables")));
       setShowCancelTable(false);
       setView("grid");
       setSelectedTable(null);
@@ -190,7 +206,7 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
     setLoading(true);
     try {
       await api("/api/orders/transfer-items", { method: "POST", body: JSON.stringify({ fromTableId: selectedTable.id, toTableId: transferTarget, orderItemIds: transferItemIds }) });
-      setTables(await api("/api/tables"));
+      setTables(mesaOnly(await api("/api/tables")));
       setShowTransfer(false);
       setTransferItemIds([]);
       setTransferTarget("");
@@ -203,7 +219,7 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
     setLoading(true);
     try {
       await api("/api/tables/merge", { method: "POST", body: JSON.stringify({ mainTableId: selectedTable.id, secondaryTableIds: mergeSources }) });
-      setTables(await api("/api/tables"));
+      setTables(mesaOnly(await api("/api/tables")));
       setShowMergeModal(false);
       setMergeSources([]);
       await loadTableOrders();
@@ -626,9 +642,9 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
               onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${color}88`; e.currentTarget.style.transform = "translateY(-2px)" }}
               onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${color}44`; e.currentTarget.style.transform = "none" }}
             >
-              <div style={{ width: 48, height: 48, borderRadius: "50%", background: color, display: "grid", placeItems: "center", margin: "0 auto 8px", color: "#fff" }}>
-                {table.status === "LIVRE" ? <Table size={22} /> : <Users size={22} />}
-              </div>
+                <div className="table-icon-bubble" style={{ background: color }}>
+                <DiningTableIcon size={24} />
+                </div>
               <strong style={{ display: "block", fontSize: 15 }}>{table.name}</strong>
               <span style={{ fontSize: 12, color: color, fontWeight: 700 }}>{statusLabel[table.status] ?? table.status}</span>
               {table.customerName ? <div style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: 6, background: "#dbeafe", borderRadius: 20, padding: "2px 10px 2px 6px", fontSize: 11, fontWeight: 700, color: "#1e40af" }}><UserRound size={12} />{table.customerName}</div> : <div style={{ minHeight: 22 }} />}

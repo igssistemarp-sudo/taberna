@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import "./styles.css";
 import CadastroView from "./CadastroView";
+import ComandasModule from "./ComandasModule";
 import ProductsModule from "./ProductsModule";
 import TablesModule from "./TablesModule";
 import CustomerModule from "./CustomerModule";
@@ -53,7 +54,7 @@ type Category = { id: string; name: string; active: boolean };
 type Product = { id: string; code: number; name: string; salePriceCents: number; costCents: number; stockCurrent: number; controlStock: boolean; onlineMenu: boolean; printTarget: string; lowStockThreshold: number; active: boolean; categoryId?: string | null; category?: Category | null };
 type Addition = { id: string; name: string; valueCents: number; charge: boolean; category?: string | null; active: boolean };
 type PaymentMethod = { id: string; name: string; allowFee: boolean; active: boolean };
-type Supplier = { id: string; name: string; document?: string | null; phone?: string | null; email?: string | null; active: boolean };
+type Supplier = { id: string; name: string; tradeName?: string | null; typePerson?: string | null; status?: string | null; document?: string | null; ie?: string | null; im?: string | null; activity?: string | null; phone?: string | null; phone2?: string | null; whatsapp?: string | null; email?: string | null; financeEmail?: string | null; site?: string | null; instagram?: string | null; facebook?: string | null; sellerName?: string | null; sellerPhone?: string | null; sellerWhatsapp?: string | null; sellerEmail?: string | null; cep?: string | null; street?: string | null; number?: string | null; complement?: string | null; district?: string | null; city?: string | null; state?: string | null; reference?: string | null; paymentTerm?: string | null; creditLimitCents?: number; minimumOrderCents?: number; visitDay?: string | null; deliveryFrequency?: string | null; bankName?: string | null; agency?: string | null; account?: string | null; pixKey?: string | null; pixType?: string | null; holderName?: string | null; classification?: string | null; notes?: string | null; active: boolean; payables?: Array<{ id: string; amountCents: number; dueDate: string; paidAt?: string | null; status: string; paymentMethod?: string | null; description: string; createdAt: string }> };
 type Printer = { id: string; name: string; type: string; ip: string; port: number; active: boolean; lastTestAt?: string | null };
 type Cash = { id: string; openingAmountCents: number; closedAt?: string | null; differenceCents?: number | null; movements: Array<{ id: string; type: string; description: string; amountCents: number; createdAt: string }> } | null;
 type Order = { id: string; number: number; type: string; status: string; deliveryFeeCents: number; customerNameSnapshot?: string | null; waiterNameSnapshot?: string | null; table?: Table | null; neighborhood?: Neighborhood | null; items: Array<{ id: string; nameSnapshot: string; quantity: number; unitPriceCents: number; totalCents: number; printTarget: string; note?: string | null; additives: Array<{ id: string; nameSnapshot: string; quantity: number; unitPriceCents: number; totalCents: number }> }>; payments: Array<{ id: string; methodNameSnapshot: string; amountCents: number }> };
@@ -115,7 +116,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [publicCompany, setPublicCompany] = useState<Company | null>(null);
-  const [page, setPage] = useState<"dashboard" | "products" | "delivery" | "tables" | "customers" | "caixa" | "financeiro" | "reports" | "cadastro" | "config">("dashboard");
+  const [page, setPage] = useState<"dashboard" | "products" | "delivery" | "comandas" | "tables" | "customers" | "caixa" | "financeiro" | "reports" | "cadastro" | "config">("dashboard");
   const [data, setData] = useState<AppData | null>(null);
   const [orderDrafts, setOrderDrafts] = useState<ItemDraft[]>([emptyDraft()]);
   const [orderType, setOrderType] = useState("MESA");
@@ -329,6 +330,7 @@ function App() {
     ["dashboard", "Painel", LayoutDashboard],
     ["products", "Produtos", Package2],
     ["delivery", "Delivery", ShoppingCart],
+    ["comandas", "Comandas", ClipboardList],
     ["tables", "Mesas", Table],
     ["customers", "Clientes", UserRound],
     ["caixa", "Caixa", Wallet],
@@ -342,6 +344,7 @@ function App() {
     dashboard: "Visão Geral",
     products: "Produtos",
     delivery: "Delivery",
+    comandas: "Comandas",
     tables: "Mesas",
     customers: "Clientes",
     caixa: "Caixa",
@@ -355,7 +358,7 @@ function App() {
     document.title = `IGS Lanchonete PRO - ${pageTitles[page]}`;
   }, [page]);
 
-  return <div className="app-shell">{error && <div className="toast">{error}</div>}<aside className="sidebar"><div className="brand"><div className="logo-mark small">TB</div><div><strong>IGS Lanchonete PRO</strong><span>{data?.user.name} - {data?.user.role}</span></div></div><nav>{nav.map(([key, label, Icon]) => <button key={key} className={page === key ? "active" : ""} onClick={() => setPage(key)}><span className="sidebar-nav-icon"><Icon size={16} /></span> {label}</button>)}</nav><button className="ghost" onClick={logout}>Sair</button></aside><main className="content">{loading && <div className="loading-bar" />}<header className="topbar"><div><span>IGS Lanchonete PRO</span><h1>{pageTitles[page]}</h1></div><div className="topbar-actions"><button className="ghost" onClick={load}><Bell size={16} /> Atualizar</button><button onClick={() => setPage("delivery")}><ClipboardList size={16} /> Novo pedido</button></div></header>{page === "dashboard" && <ExecutiveDashboard data={data} money={money} />}{page === "products" && <section className="stack"><ProductsModule data={data ? { products: data.products as any, categories: data.categories as any } : null} mutate={mutate} money={money} /></section>}{page === "delivery" && <DeliveryModule data={data ? { products: data.products as any, additions: data.additions as any, neighborhoods: data.neighborhoods as any, orders: data.orders as any, paymentMethods: data.paymentMethods as any, users: data.users as any } : null} money={money} mutate={mutate} reload={load} />}{page === "tables" && <TablesModule data={data ? { tables: data.tables as any, products: data.products as any, additions: data.additions as any, customers: data.customers as any, paymentMethods: data.paymentMethods as any, orders: data.orders as any, company: data.company, user: data.user, users: data.users as any } : null} money={money} mutate={mutate} />}{page === "customers" && <section className="stack"><CustomerModule /></section>}{page === "caixa" && <CashPro data={data} money={money} mutate={mutate} />}{page === "financeiro" && <FinancePro money={money} />}{page === "reports" && <ReportsPro data={data} money={money} />}{page === "cadastro" && <CadastroView data={data} money={money} mutate={mutate} />}{page === "config" && <SettingsView data={data} money={money} companyDraft={companyDraft} setCompanyDraft={setCompanyDraft} mutate={mutate} />}</main></div>;
+  return <div className="app-shell">{error && <div className="toast">{error}</div>}<aside className="sidebar"><div className="brand"><div className="logo-mark small">TB</div><div><strong>IGS Lanchonete PRO</strong><span>{data?.user.name} - {data?.user.role}</span></div></div><nav>{nav.map(([key, label, Icon]) => <button key={key} className={page === key ? "active" : ""} onClick={() => setPage(key)}><span className="sidebar-nav-icon"><Icon size={16} /></span> {label}</button>)}</nav><button className="ghost" onClick={logout}>Sair</button></aside><main className="content">{loading && <div className="loading-bar" />}<header className="topbar"><div><span>IGS Lanchonete PRO</span><h1>{pageTitles[page]}</h1></div><div className="topbar-actions"><button className="ghost" onClick={load}><Bell size={16} /> Atualizar</button><button onClick={() => setPage("delivery")}><ClipboardList size={16} /> Novo pedido</button></div></header>{page === "dashboard" && <ExecutiveDashboard data={data} money={money} />}{page === "products" && <section className="stack"><ProductsModule data={data ? { products: data.products as any, categories: data.categories as any } : null} mutate={mutate} money={money} /></section>}{page === "delivery" && <DeliveryModule data={data ? { products: data.products as any, additions: data.additions as any, neighborhoods: data.neighborhoods as any, orders: data.orders as any, paymentMethods: data.paymentMethods as any, users: data.users as any } : null} money={money} mutate={mutate} reload={load} />}{page === "comandas" && <section className="stack"><ComandasModule data={data ? { tables: data.tables as any, products: data.products as any, additions: data.additions as any, customers: data.customers as any, paymentMethods: data.paymentMethods as any, orders: data.orders as any, company: data.company, user: data.user, users: data.users as any } : null} money={money} mutate={mutate} /></section>}{page === "tables" && <TablesModule data={data ? { tables: data.tables as any, products: data.products as any, additions: data.additions as any, customers: data.customers as any, paymentMethods: data.paymentMethods as any, orders: data.orders as any, company: data.company, user: data.user, users: data.users as any } : null} money={money} mutate={mutate} />}{page === "customers" && <section className="stack"><CustomerModule /></section>}{page === "caixa" && <CashPro data={data} money={money} mutate={mutate} />}{page === "financeiro" && <FinancePro money={money} />}{page === "reports" && <ReportsPro data={data} money={money} />}{page === "cadastro" && <CadastroView data={data} money={money} mutate={mutate} />}{page === "config" && <SettingsView data={data} money={money} companyDraft={companyDraft} setCompanyDraft={setCompanyDraft} mutate={mutate} />}</main></div>;
 }
 
 function DashboardView({ data, money, mutate }: { data: AppData | null; money: (value: number) => string; mutate: (path: string, options?: RequestInit) => Promise<void>; }) {
