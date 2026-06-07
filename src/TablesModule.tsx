@@ -72,7 +72,6 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
   const [cancelReason, setCancelReason] = React.useState("");
   const [cancelItemId, setCancelItemId] = React.useState<string | null>(null);
   const [showOpenDialog, setShowOpenDialog] = React.useState(false);
-  const openNameRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => { if (initialData) setTables(initialData.tables); }, [initialData]);
 
@@ -223,7 +222,7 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
         {error && <div className="toast" style={{ position: "static", marginBottom: 8 }}>{error}<button className="ghost" style={{ marginLeft: 8 }} onClick={() => setError(null)}>OK</button></div>}
         {loading && <div className="loading-bar" />}
         <div className="row-between">
-          <div><h2 style={{ margin: 0 }}>{selectedTable.name}</h2><small style={{ color: "var(--text-muted)" }}>{statusLabel[selectedTable.status]} · {orders[0]?.createdAt ? new Date(orders[0].createdAt).toLocaleString("pt-BR") : ""}<span> · Cliente: <input value={selectedTable.customerName ?? ""} onChange={async (e) => { const v = e.target.value; await api(`/api/tables/${selectedTable.id}`, { method: "PUT", body: JSON.stringify({ customerName: v || null }) }); const updated = await api("/api/tables"); setTables(updated); setSelectedTable(updated.find((t: any) => t.id === selectedTable.id) ?? null); }} style={{ background: "transparent", border: "none", borderBottom: "1px dashed var(--text-muted)", color: "inherit", fontSize: "inherit", padding: "0 4px", width: 120 }} /></span></small></div>
+          <div><h2 style={{ margin: 0 }}>{selectedTable.name}</h2><small style={{ color: "var(--text-muted)" }}>{statusLabel[selectedTable.status]} · {orders[0]?.createdAt ? new Date(orders[0].createdAt).toLocaleString("pt-BR") : ""}<span> · Cliente: <input value={selectedTable.customerName ?? ""} autoFocus={!selectedTable.customerName} onChange={async (e) => { const v = e.target.value; await api(`/api/tables/${selectedTable.id}`, { method: "PUT", body: JSON.stringify({ customerName: v || null }) }); const updated = await api("/api/tables"); setTables(updated); setSelectedTable(updated.find((t: any) => t.id === selectedTable.id) ?? null); }} style={{ background: "transparent", border: "none", borderBottom: "1px dashed var(--text-muted)", color: "inherit", fontSize: "inherit", padding: "0 4px", width: 120 }} placeholder="Digite o nome..." /></span></small></div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button onClick={() => { setView("transfer"); setTransferTarget(""); }} style={{ background: "linear-gradient(135deg, #f59e0b, #d97706)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(245,158,11,0.3)" }}><ArrowLeftRight size={15} /> Transferir</button>
             <button onClick={() => { setView("merge"); setMergeSources([]); }} style={{ background: "linear-gradient(135deg, #8b5cf6, #7c3aed)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(139,92,246,0.3)" }}><Merge size={15} /> Juntar</button>
@@ -413,16 +412,10 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
           <div style={{ background: "linear-gradient(135deg, #1e3a5f, #2563eb)", borderRadius: 20, padding: 36, width: 380, maxWidth: "90vw", boxShadow: "0 20px 60px rgba(37,99,235,0.4)", color: "#fff" }} onClick={(e) => e.stopPropagation()}>
             <div style={{ fontSize: 48, textAlign: "center", marginBottom: 8 }}>🍽️</div>
             <h2 style={{ margin: "0 0 4px", textAlign: "center", fontSize: 24 }}>Abrir {selectedTable.name}</h2>
-            <p style={{ textAlign: "center", opacity: 0.8, margin: "0 0 20px", fontSize: 14 }}>Informe o nome do cliente para iniciar o atendimento</p>
-            <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 4, opacity: 0.9 }}>Nome do cliente</label>
-            <input ref={openNameRef} autoFocus placeholder="Ex: João Silva" style={{ display: "block", width: "100%", padding: "12px 16px", borderRadius: 12, border: "2px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.1)", color: "#fff", fontSize: 15, outline: "none", boxSizing: "border-box" }}
-              onFocus={(e) => e.target.style.borderColor = "rgba(255,255,255,0.6)"}
-              onBlur={(e) => e.target.style.borderColor = "rgba(255,255,255,0.2)"}
-              onKeyDown={(e) => { if (e.key === "Enter") { setShowOpenDialog(false); openTable(e.currentTarget.value); } }} />
-            <small style={{ display: "block", opacity: 0.5, marginTop: 4, fontSize: 12 }}>Deixe em branco para pular</small>
-            <div style={{ display: "flex", gap: 10, marginTop: 20, justifyContent: "flex-end" }}>
-              <button className="ghost" onClick={() => setShowOpenDialog(false)} style={{ color: "rgba(255,255,255,0.7)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 12, padding: "10px 20px", fontSize: 14 }}>Cancelar</button>
-              <button onClick={() => { const val = openNameRef.current?.value ?? ""; setShowOpenDialog(false); openTable(val); }} style={{ background: "#fff", color: "#1e3a5f", border: "none", borderRadius: 12, padding: "10px 24px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Abrir Mesa</button>
+            <p style={{ textAlign: "center", opacity: 0.8, margin: "0 0 20px", fontSize: 14 }}>Confirma a abertura da mesa?</p>
+            <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+              <button className="ghost" onClick={() => setShowOpenDialog(false)} style={{ color: "rgba(255,255,255,0.7)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 12, padding: "10px 24px", fontSize: 14 }}>Cancelar</button>
+              <button onClick={() => { setShowOpenDialog(false); openTable(""); }} style={{ background: "#fff", color: "#1e3a5f", border: "none", borderRadius: 12, padding: "10px 24px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Sim, Abrir</button>
             </div>
           </div>
         </div>
