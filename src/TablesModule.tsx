@@ -51,7 +51,7 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
   const [tables, setTables] = React.useState<TableData[]>(initialData?.tables ?? []);
   const [selectedTable, setSelectedTable] = React.useState<TableData | null>(null);
   const [orders, setOrders] = React.useState<any[]>([]);
-  const [view, setView] = React.useState<"grid" | "order" | "payment" | "transfer" | "merge">("grid");
+  const [view, setView] = React.useState<"grid" | "order" | "payment" | "merge">("grid");
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -67,6 +67,8 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
   const [discountPercent, setDiscountPercent] = React.useState(0);
 
   const [transferTarget, setTransferTarget] = React.useState("");
+  const [transferItemIds, setTransferItemIds] = React.useState<string[]>([]);
+  const [showTransfer, setShowTransfer] = React.useState(false);
   const [mergeSources, setMergeSources] = React.useState<string[]>([]);
 
   const [cancelReason, setCancelReason] = React.useState("");
@@ -154,15 +156,16 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
     } catch (e: any) { setError(e.message); } finally { setLoading(false); }
   }
 
-  async function transferTable() {
-    if (!selectedTable || !transferTarget) return;
+  async function transferItems() {
+    if (!selectedTable || !transferTarget || !transferItemIds.length) return;
     setLoading(true);
     try {
-      await api("/api/tables/transfer", { method: "POST", body: JSON.stringify({ fromTableId: selectedTable.id, toTableId: transferTarget }) });
+      await api("/api/orders/transfer-items", { method: "POST", body: JSON.stringify({ fromTableId: selectedTable.id, toTableId: transferTarget, orderItemIds: transferItemIds }) });
       setTables(await api("/api/tables"));
-      setView("grid");
-      setSelectedTable(null);
+      setShowTransfer(false);
+      setTransferItemIds([]);
       setTransferTarget("");
+      await loadTableOrders();
     } catch (e: any) { setError(e.message); } finally { setLoading(false); }
   }
 
@@ -224,7 +227,7 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
         <div className="row-between">
           <div><h2 style={{ margin: 0 }}>{selectedTable.name}</h2><small style={{ color: "var(--text-muted)" }}>{statusLabel[selectedTable.status]} · {orders[0]?.createdAt ? new Date(orders[0].createdAt).toLocaleString("pt-BR") : ""}</small><div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, background: "linear-gradient(135deg, #dbeafe, #eff6ff)", borderRadius: 50, padding: "4px 14px 4px 10px", width: "fit-content", border: "1px solid #93c5fd" }}><UserRound size={14} style={{ color: "#2563eb" }} /><span style={{ fontSize: 13, fontWeight: 600, color: "#1e40af" }}>Cliente:</span><input value={selectedTable.customerName ?? ""} autoFocus={!selectedTable.customerName} onChange={async (e) => { const v = e.target.value; await api(`/api/tables/${selectedTable.id}`, { method: "PUT", body: JSON.stringify({ customerName: v || null }) }); const updated = await api("/api/tables"); setTables(updated); setSelectedTable(updated.find((t: any) => t.id === selectedTable.id) ?? null); }} style={{ background: "transparent", border: "none", color: "#1e3a5f", fontWeight: 700, fontSize: 14, padding: "2px 4px", minWidth: 100, outline: "none" }} placeholder="Digite o nome..." /></div></div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button onClick={() => { setView("transfer"); setTransferTarget(""); }} style={{ background: "linear-gradient(135deg, #f59e0b, #d97706)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(245,158,11,0.3)" }}><ArrowLeftRight size={15} /> Transferir</button>
+            <button onClick={() => { setTransferTarget(""); setTransferItemIds([]); setShowTransfer(true); }} style={{ background: "linear-gradient(135deg, #f59e0b, #d97706)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(245,158,11,0.3)" }}><ArrowLeftRight size={15} /> Transferir</button>
             <button onClick={() => { setView("merge"); setMergeSources([]); }} style={{ background: "linear-gradient(135deg, #8b5cf6, #7c3aed)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(139,92,246,0.3)" }}><Merge size={15} /> Juntar</button>
             <button onClick={() => setView("payment")} style={{ background: "linear-gradient(135deg, #10b981, #059669)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(16,185,129,0.3)" }}><DollarSign size={15} /> Pagamento</button>
             <button onClick={() => { setView("grid"); setSelectedTable(null); setOrders([]); }} style={{ background: "linear-gradient(135deg, #64748b, #475569)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(100,116,139,0.3)" }}><ChevronLeft size={15} /> Voltar</button>
@@ -314,12 +317,34 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
           </section>
         )}
 
-        {(view as string) === "transfer" && (
-          <section className="panel">
-            <h3>Transferir Mesa {selectedTable.name}</h3>
-            <label>Mesa destino<select value={transferTarget} onChange={(e) => setTransferTarget(e.target.value)}><option value="">Selecione...</option>{tables.filter((t) => t.id !== selectedTable.id && t.status === "LIVRE").map((t) => <option key={t.id} value={t.id}>Mesa {t.name}</option>)}</select></label>
-            <div className="row-actions"><button disabled={!transferTarget} onClick={transferTable}>Transferir</button><button className="ghost" onClick={() => setView("order")}>Cancelar</button></div>
-          </section>
+        {showTransfer && selectedTable && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.6)", zIndex: 998, display: "grid", placeItems: "center", backdropFilter: "blur(4px)" }} onClick={() => setShowTransfer(false)}>
+            <div style={{ background: "#fff", borderRadius: 20, width: 520, maxWidth: "96vw", maxHeight: "90vh", display: "flex", flexDirection: "column", boxShadow: "0 25px 80px rgba(0,0,0,0.2)", overflow: "hidden" }} onClick={(e) => e.stopPropagation()}>
+              <div className="row-between" style={{ padding: "16px 24px", borderBottom: "1px solid #e2e8f0", background: "#f8fafc" }}>
+                <h3 style={{ margin: 0, fontSize: 17, color: "#1e293b" }}><ArrowLeftRight size={18} style={{ marginRight: 8, color: "#f59e0b" }} />Transferir Itens</h3>
+                <button className="ghost" onClick={() => setShowTransfer(false)} style={{ borderRadius: 10, padding: 6 }}><X size={18} /></button>
+              </div>
+              <div style={{ flex: 1, overflow: "auto", padding: "16px 24px" }}>
+                <p style={{ fontSize: 13, color: "#475569", margin: "0 0 12px" }}>Selecione os itens para transferir de <strong>{selectedTable.name}</strong>:</p>
+                {items.filter((i: any) => !i.cancelledAt).map((item: any, idx: number) => {
+                  const checked = transferItemIds.includes(item.id);
+                  return (
+                    <label key={item.id ?? idx} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 10, border: checked ? "2px solid #f59e0b" : "1px solid #e2e8f0", background: checked ? "#fffbeb" : "#fff", cursor: "pointer", marginBottom: 6 }}>
+                      <input type="checkbox" checked={checked} onChange={() => setTransferItemIds((prev) => prev.includes(item.id) ? prev.filter((id) => id !== item.id) : [...prev, item.id])} style={{ accentColor: "#f59e0b" }} />
+                      <strong style={{ flex: 1, fontSize: 14, color: "#1e293b" }}>{item.nameSnapshot}</strong>
+                      <span style={{ fontSize: 13, color: "#64748b" }}>{item.quantity}x</span>
+                      <span style={{ fontWeight: 700, color: "#f59e0b", fontSize: 14 }}>{money(item.totalCents)}</span>
+                    </label>
+                  );
+                })}
+                <label style={{ display: "block", marginTop: 16, fontSize: 13, fontWeight: 600, color: "#475569" }}>Mesa destino<select value={transferTarget} onChange={(e) => setTransferTarget(e.target.value)} style={{ display: "block", width: "100%", marginTop: 4, padding: "10px 14px", borderRadius: 10, border: "1px solid #cbd5e1", fontSize: 14, background: "#fff" }}><option value="">Selecione...</option>{tables.filter((t) => t.id !== selectedTable.id).map((t) => <option key={t.id} value={t.id}>Mesa {t.name} ({statusLabel[t.status]})</option>)}</select></label>
+              </div>
+              <div style={{ padding: "16px 24px", borderTop: "1px solid #e2e8f0", display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <button className="ghost" onClick={() => setShowTransfer(false)} style={{ borderRadius: 10, padding: "10px 20px" }}>Cancelar</button>
+                <button disabled={!transferTarget || !transferItemIds.length} onClick={transferItems} style={{ background: !transferTarget || !transferItemIds.length ? "#cbd5e1" : "linear-gradient(135deg, #f59e0b, #d97706)", color: "#fff", border: "none", borderRadius: 10, padding: "10px 24px", fontSize: 14, fontWeight: 700, cursor: !transferTarget || !transferItemIds.length ? "default" : "pointer" }}><ArrowLeftRight size={16} /> Transferir {transferItemIds.length} item(ns)</button>
+              </div>
+            </div>
+          </div>
         )}
 
         {(view as string) === "merge" && (
