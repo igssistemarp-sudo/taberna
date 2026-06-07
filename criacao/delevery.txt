@@ -1,0 +1,384 @@
+PROMPT COMPLETO – MÓDULO DE CLIENTES E DELIVERY
+
+Criar um módulo completo de CLIENTES E DELIVERY para o sistema IGS Lanchonete PRO, utilizando PostgreSQL com senha padrão 123.
+
+OBJETIVO
+
+O sistema deve ser extremamente rápido para atendimento telefônico, WhatsApp e pedidos online.
+
+O atendente deve conseguir localizar um cliente em segundos apenas digitando o telefone.
+
+=================================================================
+PESQUISA RÁPIDA DE CLIENTE
+=================================================================
+
+Ao abrir um novo pedido Delivery, mostrar uma tela de pesquisa rápida.
+
+Campo principal:
+
+Telefone / WhatsApp
+
+Máscara:
+(00) 00000-0000
+
+Ao digitar o telefone:
+
+- Procurar automaticamente no banco
+- Procurar por telefone ou WhatsApp
+- Buscar enquanto digita
+- Não exigir Enter
+
+Se encontrar:
+
+Exibir:
+
+Nome do Cliente
+Telefone
+Bairro
+Endereço
+Número
+Último Pedido
+Data da Última Compra
+Total Gasto
+
+Botões:
+
+Selecionar Cliente
+Editar Cadastro
+Ver Histórico
+
+Se NÃO encontrar:
+
+Exibir botão:
+
+➕ Cadastrar Novo Cliente
+
+=================================================================
+CADASTRO DE CLIENTE
+=================================================================
+
+Ao clicar em Novo Cliente:
+
+Abrir formulário completo.
+
+DADOS PESSOAIS
+
+- Nome Completo *
+- Apelido
+- CPF
+- RG
+- Data de Nascimento
+- Sexo
+
+CONTATOS
+
+- Telefone Principal *
+- WhatsApp
+- Telefone Comercial
+- E-mail
+
+Aplicar máscaras.
+
+=================================================================
+ENDEREÇO PRINCIPAL
+=================================================================
+
+Campos:
+
+CEP *
+Logradouro
+Número *
+Complemento
+Bairro *
+Cidade
+Estado
+Ponto de Referência
+
+Ao digitar o CEP:
+
+Buscar automaticamente:
+
+- Rua
+- Bairro
+- Cidade
+- Estado
+
+Utilizar API de CEP.
+
+Exemplo:
+
+35170-000
+
+Retorna automaticamente:
+
+Rua
+Bairro
+Cidade
+UF
+
+=================================================================
+BAIRRO COM TAXA DE ENTREGA
+=================================================================
+
+Criar cadastro de bairros.
+
+Tabela:
+
+bairros
+
+Campos:
+
+- Código
+- Nome
+- Cidade
+- Taxa de Entrega
+- Tempo Médio
+- Ativo
+
+Exemplo:
+
+Centro = R$ 5,00
+Cidade Nobre = R$ 8,00
+Bom Retiro = R$ 10,00
+Cariru = R$ 7,00
+
+Ao selecionar o bairro:
+
+Buscar automaticamente:
+
+- Taxa de entrega
+- Tempo médio
+
+Exibir na tela do pedido.
+
+=================================================================
+MÚLTIPLOS ENDEREÇOS
+=================================================================
+
+O cliente poderá possuir vários endereços.
+
+Exemplo:
+
+Casa
+Trabalho
+Sítio
+Casa da Mãe
+
+Ao abrir pedido:
+
+Perguntar:
+
+Qual endereço deseja utilizar?
+
+=================================================================
+DADOS PARA ENTREGA
+=================================================================
+
+Campos específicos:
+
+- Melhor horário para entrega
+- Observação para entrega
+- Tem cachorro?
+- Tem porteiro?
+- Apartamento?
+- Bloco?
+- Número da casa
+- Nome do condomínio
+- Localização GPS opcional
+
+=================================================================
+LOCALIZAÇÃO
+=================================================================
+
+Permitir salvar:
+
+Latitude
+Longitude
+
+Botão:
+
+📍 Compartilhar Localização
+
+Permitir integração futura com Google Maps.
+
+=================================================================
+OBSERVAÇÕES DO CLIENTE
+=================================================================
+
+Campo livre.
+
+Exemplos:
+
+- Cliente prefere pouco sal
+- Cliente alérgico a camarão
+- Não tocar campainha
+- Entregar no portão lateral
+- Sempre paga em dinheiro
+
+=================================================================
+INFORMAÇÕES COMERCIAIS
+=================================================================
+
+Exibir automaticamente:
+
+Quantidade de Pedidos
+
+Valor Total Comprado
+
+Ticket Médio
+
+Última Compra
+
+Data do Último Pedido
+
+Cliente Desde
+
+=================================================================
+CLASSIFICAÇÃO DE CLIENTES
+=================================================================
+
+Criar classificação automática.
+
+Bronze
+Prata
+Ouro
+Diamante
+
+Baseado em:
+
+Quantidade de pedidos
+Valor gasto
+
+=================================================================
+HISTÓRICO DE PEDIDOS
+=================================================================
+
+Botão:
+
+Histórico
+
+Exibir:
+
+Pedido
+Data
+Valor
+Forma de Pagamento
+Entregador
+Tempo de Entrega
+
+Botão:
+
+🔁 Repetir Pedido
+
+O sistema deve copiar todos os itens para um novo pedido.
+
+=================================================================
+CLIENTES INATIVOS
+=================================================================
+
+Mostrar alerta:
+
+Cliente sem comprar há:
+
+30 dias
+60 dias
+90 dias
+
+=================================================================
+PROGRAMA DE FIDELIDADE
+=================================================================
+
+Permitir:
+
+A cada pedido gerar pontos.
+
+Exemplo:
+
+1 ponto para cada R$ 1,00 gasto.
+
+Mostrar:
+
+Saldo de pontos.
+
+Permitir trocar por:
+
+- Refrigerante
+- Hambúrguer
+- Sobremesa
+- Desconto
+
+=================================================================
+INTEGRAÇÃO COM DELIVERY
+=================================================================
+
+Ao selecionar cliente:
+
+Carregar automaticamente:
+
+Nome
+Telefone
+Endereço
+Bairro
+Taxa de Entrega
+Observações
+
+Sem necessidade de redigitar.
+
+=================================================================
+TELA RESUMIDA PARA ATENDIMENTO
+=================================================================
+
+Após localizar cliente:
+
+Mostrar card lateral:
+
+Nome
+Telefone
+Endereço
+Bairro
+Taxa de Entrega
+Último Pedido
+Última Compra
+
+Botões:
+
+Novo Pedido
+Editar Cliente
+Histórico
+Repetir Pedido
+
+=================================================================
+REGRAS IMPORTANTES
+=================================================================
+
+Não permitir telefones duplicados.
+
+Validar CEP.
+
+Validar bairro cadastrado.
+
+Calcular taxa automaticamente.
+
+Atualizar histórico automaticamente.
+
+Guardar todos os pedidos vinculados ao cliente.
+
+=================================================================
+VISUAL
+=================================================================
+
+Layout moderno estilo iFood.
+
+Campos grandes.
+
+Botões touch.
+
+Pesquisa rápida.
+
+Busca instantânea.
+
+Cadastro simples e rápido.
+
+Objetivo:
+
+Em menos de 15 segundos o atendente deve conseguir localizar o cliente, abrir um pedido e iniciar o lançamento dos produtos.

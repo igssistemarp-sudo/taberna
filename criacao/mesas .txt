@@ -1,0 +1,455 @@
+PROMPT COMPLETO — MÓDULO CONTROLE DE MESAS / COMANDAS
+
+Crie um módulo completo de CONTROLE DE MESAS para o sistema IGS Lanchonete PRO, usando PostgreSQL com senha 123.
+
+OBJETIVO
+O módulo deve permitir controlar mesas de uma lanchonete/bar/restaurante, com abertura de mesa, lançamento de itens, cancelamento, transferência, junção de mesas, impressão de pré-conta e fechamento com várias formas de pagamento.
+
+TELA PRINCIPAL DE MESAS
+
+Criar uma tela chamada “Mesas”.
+
+Ao clicar no menu Mesas, exibir visualmente as mesas em formato de cards/botões grandes.
+
+Exemplo inicial:
+- Mesa 01
+- Mesa 02
+- Mesa 03
+- Até Mesa 15
+
+As mesas devem aparecer em grade, com visual bonito, moderno e responsivo.
+
+CORES DAS MESAS
+
+Usar cores por status:
+
+- LARANJA: mesa livre, aguardando cliente
+- VERDE: mesa aberta/ocupada
+- VERMELHO: mesa com pedido cancelado ou bloqueada
+- AZUL: mesa aguardando pagamento
+- AMARELO: mesa com itens enviados para cozinha/bar
+
+Quando a mesa estiver livre, ela deve ficar LARANJA.
+
+Quando der dois cliques em uma mesa livre, o sistema deve abrir a mesa e mudar a cor para VERDE.
+
+Quando finalizar o pagamento, a mesa deve voltar automaticamente para LARANJA, aguardando o próximo cliente.
+
+ABERTURA DA MESA
+
+Ao dar dois cliques em uma mesa livre:
+
+- Criar uma comanda vinculada à mesa
+- Registrar data e hora de abertura
+- Registrar usuário/garçom
+- Alterar status da mesa para ABERTA
+- Mudar cor da mesa para VERDE
+- Abrir a tela de lançamento de itens
+
+TELA DE LANÇAMENTO DE ITENS DA MESA
+
+Ao abrir uma mesa, mostrar:
+
+Dados superiores:
+- Número da mesa
+- Número da comanda
+- Data/hora de abertura
+- Garçom/usuário
+- Cliente opcional
+- Status da mesa
+
+Grid de itens:
+- Código
+- Produto
+- Quantidade
+- Valor unitário
+- Adicionais
+- Observação
+- Desconto
+- Valor total
+
+Botões principais:
+- Lançar Item
+- Excluir Item
+- Cancelar Item
+- Salvar
+- Voltar para Mesas
+- Transferir Mesa
+- Juntar Mesa
+- Imprimir Pré-conta
+- Pagamento
+
+LANÇAR ITEM
+
+Ao clicar em “Lançar Item”:
+
+- Abrir busca de produtos
+- Permitir pesquisar por nome, código ou categoria
+- Informar quantidade
+- Permitir adicionais
+- Permitir observação do item
+
+Exemplos de observação:
+- Sem cebola
+- Sem tomate
+- Carne bem passada
+- Sem gelo
+- Ponto da carne ao ponto
+
+Ao confirmar:
+- Inserir item na grid
+- Calcular subtotal
+- Enviar para cozinha/bar, se configurado
+- Atualizar total da mesa
+
+ADICIONAIS NO ITEM
+
+Permitir adicionais no produto.
+
+Exemplo:
+Hambúrguer R$ 30,00
++ Bacon R$ 3,00
++ Ovo R$ 2,00
+
+Total do item: R$ 35,00
+
+O adicional deve aparecer junto ao item na grid e também na impressão da cozinha.
+
+EXCLUIR ITEM
+
+Botão “Excluir Item”:
+
+- Permitir excluir item recém-lançado antes de salvar/enviar
+- Se o item já foi salvo/enviado, exigir senha de gerente ou permissão especial
+- Registrar log da exclusão
+
+CANCELAR ITEM
+
+Botão “Cancelar Item”:
+
+Ao cancelar item:
+- Solicitar motivo do cancelamento
+- Solicitar usuário/senha de gerente, caso configurado
+- Não apagar o item do banco
+- Apenas marcar como CANCELADO
+- Remover o valor do total da mesa
+- Guardar histórico para relatório
+
+Motivos exemplo:
+- Cliente desistiu
+- Produto lançado errado
+- Produto indisponível
+- Erro do garçom
+- Cortesia/autorizado
+
+SALVAR
+
+Botão “Salvar”:
+
+- Salvar todos os itens lançados
+- Atualizar total da mesa
+- Manter mesa aberta
+- Continuar na tela da mesa
+
+VOLTAR PARA MESAS
+
+Botão “Voltar para Mesas”:
+
+- Salvar alterações pendentes
+- Retornar para tela principal de mesas
+- Manter cor conforme status da mesa
+
+TRANSFERIR MESA
+
+Criar função “Transferir Mesa”.
+
+Exemplo:
+Transferir Mesa 03 para Mesa 08.
+
+Regras:
+- Selecionar mesa de origem
+- Selecionar mesa de destino
+- A mesa destino precisa estar livre
+- Transferir todos os itens, valores, cliente e garçom
+- Mesa origem volta para LARANJA
+- Mesa destino fica VERDE
+- Registrar log da transferência
+
+JUNTAR MESAS
+
+Criar função “Juntar Mesas”.
+
+Exemplo:
+Juntar Mesa 04 com Mesa 05.
+
+Regras:
+- Selecionar mesa principal
+- Selecionar uma ou mais mesas para juntar
+- Somar todos os itens na mesa principal
+- Manter histórico das mesas juntadas
+- Mesas secundárias voltam para LARANJA
+- Mesa principal permanece VERDE
+- Registrar log da junção
+
+IMPRIMIR PRÉ-CONTA
+
+Botão “Imprimir Pré-conta”:
+
+Gerar/imprimir resumo da mesa com:
+
+- Nome da empresa
+- Número da mesa
+- Número da comanda
+- Data/hora
+- Garçom
+- Itens consumidos
+- Quantidade
+- Valor unitário
+- Valor total
+- Subtotal
+- Desconto, se houver
+- Taxa de serviço, se houver
+- Total geral
+
+A pré-conta não deve finalizar a mesa.
+
+PAGAMENTO / FECHAMENTO DA MESA
+
+Botão “Pagamento”:
+
+Ao clicar, abrir tela de pagamento com:
+
+- Total da mesa
+- Desconto em R$
+- Desconto em %
+- Taxa de serviço, se houver
+- Total final
+- Valor pago
+- Troco
+- Grid de formas de pagamento
+
+FORMAS DE PAGAMENTO
+
+Mostrar uma grid/lista com as formas cadastradas:
+
+- Dinheiro
+- Cartão de Crédito
+- Cartão de Débito
+- Pix
+- A Prazo
+
+Cada forma deve permitir informar valor.
+
+Exemplo:
+Total da mesa: R$ 150,00
+
+Pagamento:
+- Dinheiro: R$ 50,00
+- Pix: R$ 100,00
+
+Total pago: R$ 150,00
+Restante: R$ 0,00
+
+DINHEIRO COM TROCO
+
+Quando a forma for Dinheiro:
+
+- Informar valor recebido
+- Calcular troco automaticamente
+
+Exemplo:
+Total: R$ 87,50
+Cliente entregou: R$ 100,00
+Troco: R$ 12,50
+
+Usar máscara financeira brasileira:
+R$ 0,00
+
+MÁSCARA FINANCEIRA
+
+Todos os campos de valor devem usar máscara:
+
+- R$ 0,00
+- R$ 10,00
+- R$ 1.000,00
+- R$ 10.000,00
+
+Aceitar vírgula como decimal.
+
+PAGAMENTO A PRAZO
+
+Quando selecionar “A Prazo”:
+
+O sistema deve obrigatoriamente solicitar cliente.
+
+Se a mesa ainda não tiver cliente vinculado, abrir tela para selecionar/cadastrar cliente.
+
+Dados mínimos:
+- Nome
+- Telefone
+- CPF/CNPJ opcional
+- Endereço opcional
+
+Ao finalizar a prazo:
+- Gerar conta a receber automaticamente
+- Vincular ao cliente
+- Informar vencimento
+- Status: Em aberto
+
+Não permitir finalizar pagamento a prazo sem cliente.
+
+FINALIZAR MESA
+
+Ao finalizar:
+
+- Validar se o total pago é igual ou maior que o total da mesa
+- Baixar estoque dos produtos, se configurado
+- Registrar venda
+- Registrar formas de pagamento
+- Gerar movimentação no livro caixa
+- Gerar conta a receber, se houver pagamento a prazo
+- Imprimir comprovante, se configurado
+- Fechar comanda
+- Alterar status da mesa para LIVRE
+- Mudar cor da mesa para LARANJA
+- Limpar itens da tela
+- Mesa fica pronta para o próximo cliente
+
+CANCELAMENTO DA MESA
+
+Criar opção para cancelar mesa inteira.
+
+Regras:
+- Exigir motivo
+- Exigir permissão de gerente
+- Registrar log
+- Cancelar todos os itens
+- Mesa volta para LARANJA
+
+BANCO DE DADOS
+
+Criar tabelas principais:
+
+mesas:
+- id
+- numero
+- descricao
+- status
+- ativo
+
+comandas:
+- id
+- mesa_id
+- cliente_id
+- garcom_id
+- data_abertura
+- data_fechamento
+- status
+- subtotal
+- desconto_valor
+- desconto_percentual
+- taxa_servico
+- total
+- observacao
+
+comanda_itens:
+- id
+- comanda_id
+- produto_id
+- quantidade
+- valor_unitario
+- desconto
+- total
+- observacao
+- status
+- motivo_cancelamento
+
+comanda_item_adicionais:
+- id
+- comanda_item_id
+- adicional_id
+- quantidade
+- valor
+- total
+
+pagamentos:
+- id
+- comanda_id
+- forma_pagamento_id
+- valor
+- valor_recebido
+- troco
+
+formas_pagamento:
+- id
+- nome
+- tipo
+- ativo
+
+movimento_caixa:
+- id
+- data
+- tipo
+- descricao
+- valor
+- forma_pagamento_id
+- usuario_id
+- comanda_id
+
+contas_receber:
+- id
+- cliente_id
+- comanda_id
+- descricao
+- valor
+- vencimento
+- status
+
+logs_mesas:
+- id
+- mesa_id
+- comanda_id
+- usuario_id
+- acao
+- descricao
+- data_hora
+
+REGRAS IMPORTANTES
+
+- Não permitir abrir mesa já ocupada
+- Não permitir fechar mesa sem itens, exceto cancelamento
+- Não permitir pagamento menor que o total
+- Não permitir a prazo sem cliente
+- Não excluir item definitivamente, apenas marcar como cancelado
+- Toda transferência, junção e cancelamento deve gerar log
+- Mesa finalizada sempre volta para LARANJA
+- Mesa aberta sempre fica VERDE
+- Sistema deve ser simples, rápido e fácil para uso em atendimento real
+
+VISUAL
+
+Criar visual profissional para lanchonete:
+
+- Fundo escuro elegante
+- Cards de mesa grandes
+- Laranja para mesa livre
+- Verde para mesa ocupada
+- Ícones intuitivos
+- Botões grandes para usar em touch screen
+- Tela responsiva para tablet e computador
+- Layout limpo e rápido
+
+OBJETIVO FINAL
+
+O dono da lanchonete deve conseguir:
+- Ver rapidamente quais mesas estão livres ou ocupadas
+- Abrir mesa com dois cliques
+- Lançar produtos e adicionais
+- Cancelar itens com controle
+- Transferir mesas
+- Juntar mesas
+- Imprimir pré-conta
+- Receber em várias formas de pagamento
+- Calcular troco
+- Vender a prazo vinculando cliente
+- Finalizar mesa e liberar para o próximo cliente

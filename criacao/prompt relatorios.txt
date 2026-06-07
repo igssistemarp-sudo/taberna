@@ -1,0 +1,394 @@
+PROMPT - MÓDULO DE RELATÓRIOS GERENCIAIS PARA LANCHONETE, DELIVERY E BAR
+
+Crie um módulo completo de relatórios gerenciais para o sistema IGS Lanchonete PRO.
+
+Todos os relatórios devem possuir:
+
+Filtro por data inicial e final
+Filtro por hora
+Filtro por usuário
+Filtro por garçom
+Filtro por entregador
+Filtro por cliente
+Filtro por bairro
+Filtro por forma de pagamento
+Visualização em tela
+Exportação PDF
+Exportação Excel
+Exportação CSV
+Impressão direta
+RELATÓRIOS DE VENDAS
+Vendas por Período
+
+Exibir:
+
+Quantidade de pedidos
+Valor bruto
+Descontos
+Taxas de entrega
+Valor líquido
+Ticket médio
+Vendas por Dia
+
+Mostrar:
+
+Total vendido
+Quantidade de pedidos
+Ticket médio
+
+Gráfico diário.
+
+Vendas por Hora
+
+Mostrar:
+
+Horário
+Quantidade de pedidos
+Valor vendido
+
+Objetivo:
+
+Identificar horários de pico.
+
+Vendas por Dia da Semana
+
+Exemplo:
+
+Segunda
+Terça
+Quarta
+Quinta
+Sexta
+Sábado
+Domingo
+
+Mostrar:
+
+Total vendido
+Quantidade de pedidos
+Vendas por Mês
+
+Mostrar:
+
+Faturamento
+Crescimento
+Comparativo entre meses
+RELATÓRIOS DE PRODUTOS
+Produtos Mais Vendidos
+
+Mostrar:
+
+Produto
+Quantidade
+Valor faturado
+
+Ranking Top 10
+Top 20
+Top 50
+
+Produtos Menos Vendidos
+
+Mostrar:
+
+Produto
+Quantidade
+
+Ajuda a identificar itens para retirar do cardápio.
+
+Lucratividade por Produto
+
+Mostrar:
+
+Produto
+Custo
+Venda
+Lucro unitário
+Lucro total
+Vendas por Categoria
+
+Exemplo:
+
+Hambúrguer
+Bebidas
+Porções
+Sobremesas
+
+Mostrar:
+
+Quantidade
+Valor vendido
+RELATÓRIOS DE ADICIONAIS
+Adicionais Mais Vendidos
+
+Exemplo:
+
+Bacon
+Ovo
+Queijo extra
+
+Mostrar:
+
+Quantidade
+Valor gerado
+Faturamento de Adicionais
+
+Mostrar:
+
+Quanto os adicionais aumentaram o faturamento.
+
+RELATÓRIOS DE CLIENTES
+Clientes que Mais Compram
+
+Mostrar:
+
+Nome
+Quantidade de pedidos
+Valor gasto
+
+Ranking.
+
+Última Compra dos Clientes
+
+Mostrar:
+
+Cliente
+Último pedido
+Valor
+Clientes Inativos
+
+Mostrar:
+
+Clientes sem compra há:
+
+30 dias
+60 dias
+90 dias
+RELATÓRIOS DE DELIVERY
+Delivery por Bairro
+
+Mostrar:
+
+Bairro
+Quantidade de pedidos
+Valor vendido
+Taxa de Entrega por Bairro
+
+Mostrar:
+
+Bairro
+Valor arrecadado
+Tempo Médio de Entrega
+
+Mostrar:
+
+Tempo médio
+Tempo mínimo
+Tempo máximo
+Pedidos Delivery
+
+Mostrar:
+
+Cliente
+Bairro
+Entregador
+Valor
+Horário
+RELATÓRIOS DE ENTREGADORES
+Desempenho dos Entregadores
+
+Mostrar:
+
+Entregador
+Quantidade de entregas
+Valor transportado
+Entregas por Entregador
+
+Mostrar:
+
+Data
+Pedido
+Cliente
+Bairro
+Valor
+Tempo Médio por Entregador
+
+Mostrar:
+
+Tempo médio
+Entregas realizadas
+Comissão dos Entregadores
+
+Mostrar:
+
+Total de entregas
+Valor da comissão
+Valor a receber
+RELATÓRIOS DOS GARÇONS
+Vendas por Garçom
+
+Mostrar:
+
+Garçom
+Quantidade de pedidos
+Valor vendido
+Comissão por Garçom
+
+Mostrar:
+
+Percentual
+Valor gerado
+RELATÓRIOS DE MESAS
+Giro de Mesas
+
+Mostrar:
+
+Mesa
+Quantidade de atendimentos
+Tempo Médio de Permanência
+
+Mostrar:
+
+Mesa
+Tempo médio
+Consumo por Mesa
+
+Mostrar:
+
+Mesa
+Valor consumido
+RELATÓRIOS DE CAIXA
+Livro Caixa
+
+Mostrar:
+
+Entradas
+Saídas
+Sangrias
+Reforços
+Fechamento de Caixa
+
+Mostrar:
+
+Dinheiro
+PIX
+Débito
+Crédito
+Total Geral
+Diferença de Caixa
+
+Mostrar:
+
+Valor esperado
+Valor informado
+Diferença
+RELATÓRIOS FINANCEIROS
+Contas a Pagar
+
+Mostrar:
+
+Abertas
+Pagas
+Vencidas
+Contas a Receber
+
+Mostrar:
+
+Em aberto
+Recebidas
+Vencidas
+Fluxo de Caixa
+
+Mostrar:
+
+Entradas e saídas por período.
+
+DRE Simplificada
+
+Mostrar:
+
+Receitas
+
+(-) Custos
+
+(-) Despesas
+
+(=) Lucro
+
+RELATÓRIOS DE ESTOQUE
+Estoque Atual
+
+Mostrar:
+
+Produto
+Quantidade
+Custo
+Estoque Baixo
+
+Mostrar:
+
+Produtos abaixo do mínimo.
+
+Consumo de Ingredientes
+
+Mostrar:
+
+Produto
+Quantidade consumida
+Movimentação de Estoque
+
+Mostrar:
+
+Entradas
+Saídas
+Ajustes
+RELATÓRIOS DE CANCELAMENTOS
+Pedidos Cancelados
+
+Mostrar:
+
+Usuário
+Motivo
+Valor
+Itens Cancelados
+
+Mostrar:
+
+Produto
+Quantidade
+Ranking de Cancelamentos
+
+Mostrar:
+
+Quem mais cancelou.
+
+DASHBOARD EXECUTIVO
+
+Criar dashboard com:
+
+Faturamento Hoje
+Faturamento Mês
+Pedidos Hoje
+Delivery Hoje
+Mesas Ocupadas
+Ticket Médio
+Produto Mais Vendido
+Bairro que Mais Compra
+Entregador Destaque
+Garçom Destaque
+Lucro Estimado
+Contas a Pagar Vencidas
+Fluxo de Caixa
+
+Com gráficos modernos e indicadores coloridos.
+
+OBJETIVO:
+Permitir que o proprietário da lanchonete saiba exatamente:
+
+Quanto vendeu
+Quanto lucrou
+Qual produto vende mais
+Qual bairro compra mais
+Qual entregador entrega mais
+Qual garçom vende mais
+Onde está perdendo dinheiro
+Como melhorar as vendas e o delivery.
