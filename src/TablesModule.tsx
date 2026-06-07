@@ -225,11 +225,11 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
         {loading && <div className="loading-bar" />}
         <div className="row-between">
           <div><h2 style={{ margin: 0 }}>Mesa {selectedTable.name}</h2><small style={{ color: "var(--text-muted)" }}>{statusLabel[selectedTable.status]} · {orders[0]?.createdAt ? new Date(orders[0].createdAt).toLocaleString("pt-BR") : ""}</small></div>
-          <div className="topbar-actions">
-            <button className="ghost" onClick={() => { setView("transfer"); setTransferTarget(""); }}><ArrowLeftRight size={16} /> Transferir</button>
-            <button className="ghost" onClick={() => { setView("merge"); setMergeSources([]); }}><Merge size={16} /> Juntar</button>
-            <button className="ghost" onClick={() => setView("payment")}><DollarSign size={16} /> Pagamento</button>
-            <button className="ghost" onClick={() => { setView("grid"); setSelectedTable(null); setOrders([]); }}><ChevronLeft size={16} /> Voltar</button>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button onClick={() => { setView("transfer"); setTransferTarget(""); }} style={{ background: "linear-gradient(135deg, #f59e0b, #d97706)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(245,158,11,0.3)" }}><ArrowLeftRight size={15} /> Transferir</button>
+            <button onClick={() => { setView("merge"); setMergeSources([]); }} style={{ background: "linear-gradient(135deg, #8b5cf6, #7c3aed)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(139,92,246,0.3)" }}><Merge size={15} /> Juntar</button>
+            <button onClick={() => setView("payment")} style={{ background: "linear-gradient(135deg, #10b981, #059669)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(16,185,129,0.3)" }}><DollarSign size={15} /> Pagamento</button>
+            <button onClick={() => { setView("grid"); setSelectedTable(null); setOrders([]); }} style={{ background: "linear-gradient(135deg, #64748b, #475569)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(100,116,139,0.3)" }}><ChevronLeft size={15} /> Voltar</button>
           </div>
         </div>
 
