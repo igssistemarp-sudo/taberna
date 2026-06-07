@@ -809,7 +809,10 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
     return <div style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 18, padding: 14, minHeight: 96 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><div><div style={{ color: "#93c5fd", fontSize: 12, textTransform: "uppercase", fontWeight: 800 }}>{label}</div><strong style={{ fontSize: 26 }}>{value}</strong></div><div style={{ width: 34, height: 34, borderRadius: 12, background: "rgba(59,130,246,0.18)", display: "grid", placeItems: "center" }}>{icon}</div></div></div>;
   }
 
-  return null;
+  if (stage === "tables") return renderTablesPage();
+  if (stage === "comandas") return renderComandasPage();
+  if (stage === "detail") return renderDetail();
+  return renderHome();
 }
 
 const fieldStyle: React.CSSProperties = { width: "100%", background: "rgba(255,255,255,0.95)", color: "#0f172a", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 14, padding: "12px 14px", outline: "none", fontWeight: 600 };
