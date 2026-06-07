@@ -68,18 +68,32 @@ function normalizeBaseUrl(input: string, port: string) {
 }
 
 async function api<T>(baseUrl: string, path: string, options: RequestInit = {}, token?: string | null): Promise<T> {
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.headers ?? {})
+  try {
+    const response = await fetch(`${baseUrl}${path}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(options.headers ?? {})
+      }
+    });
+    const text = await response.text();
+    const data = text ? JSON.parse(text) : null;
+    if (!response.ok) throw new Error(data?.message ?? "Erro");
+    return data;
+  } catch (error: any) {
+    if (error instanceof TypeError || /Failed to fetch/i.test(error?.message ?? "")) {
+      if (window.location.protocol === "https:" && /^http:\/\//i.test(baseUrl) && !/^http:\/\/(localhost|127\.0\.0\.1)/i.test(baseUrl)) {
+        throw new Error("O navegador bloqueou a conexão com o IP local. Se estiver no Render/Web, use o modo Web. Para usar IP local, abra o app na mesma rede/localmente.");
+      }
+      throw new Error(`Sem conexão com o servidor em ${baseUrl}. Verifique se a API está no ar e se o endereço está correto.`);
     }
-  });
-  const text = await response.text();
-  const data = text ? JSON.parse(text) : null;
-  if (!response.ok) throw new Error(data?.message ?? "Erro");
-  return data;
+    throw error;
+  }
+}
+
+async function checkHealth(baseUrl: string, token?: string | null) {
+  return api<{ ok: boolean }>(baseUrl, "/api/health", {}, token);
 }
 
 function statusColor(status: string) {
@@ -163,6 +177,7 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
     setLoading(true);
     setError(null);
     try {
+      await checkHealth(url);
       await api(url, "/api/company");
       setMessage("Conectado com sucesso.");
     } catch (e: any) {
@@ -187,6 +202,7 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
     setLoading(true);
     setError(null);
     try {
+      await checkHealth(config.baseUrl);
       const result = await api<{ token: string }>(config.baseUrl, "/api/auth/login", { method: "POST", body: JSON.stringify({ login, password }) });
       localStorage.setItem(TOKEN_KEY, result.token);
       setToken(result.token);
@@ -197,7 +213,10 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
       setStage("home");
       setMessage("Login realizado.");
     } catch (e: any) {
-      setError(e.message);
+      const msg = String(e?.message ?? "");
+      if (/Login ou senha invalidos/i.test(msg)) setError(msg);
+      else if (/Sem conexão com o servidor/i.test(msg) || /Failed to fetch/i.test(msg)) setError("API indisponível. Verifique se o servidor está ligado e se o app está usando a URL correta.");
+      else setError(msg);
     } finally {
       setLoading(false);
     }
