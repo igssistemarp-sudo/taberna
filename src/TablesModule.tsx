@@ -71,8 +71,8 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
 
   const [cancelReason, setCancelReason] = React.useState("");
   const [cancelItemId, setCancelItemId] = React.useState<string | null>(null);
-  const [openCustomerName, setOpenCustomerName] = React.useState("");
   const [showOpenDialog, setShowOpenDialog] = React.useState(false);
+  const openNameRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => { if (initialData) setTables(initialData.tables); }, [initialData]);
 
@@ -87,11 +87,11 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
 
   React.useEffect(() => { if (selectedTable && (view === "order" || view === "payment")) loadTableOrders(); }, [selectedTable, view]);
 
-  async function openTable() {
+  async function openTable(name: string) {
     if (!selectedTable) return;
     setLoading(true);
     try {
-      const opened = await api(`/api/tables/${selectedTable.id}/open`, { method: "PUT", body: JSON.stringify({ customerName: openCustomerName || null }) });
+      const opened = await api(`/api/tables/${selectedTable.id}/open`, { method: "PUT", body: JSON.stringify({ customerName: name || null }) });
       setSelectedTable(opened);
       setTables((prev) => prev.map((t) => t.id === opened.id ? opened : t));
       await reload("/api/company", {});
@@ -415,14 +415,14 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
             <h2 style={{ margin: "0 0 4px", textAlign: "center", fontSize: 24 }}>Abrir {selectedTable.name}</h2>
             <p style={{ textAlign: "center", opacity: 0.8, margin: "0 0 20px", fontSize: 14 }}>Informe o nome do cliente para iniciar o atendimento</p>
             <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 4, opacity: 0.9 }}>Nome do cliente</label>
-            <input value={openCustomerName} onChange={(e) => setOpenCustomerName(e.target.value)} autoFocus placeholder="Ex: João Silva" style={{ display: "block", width: "100%", padding: "12px 16px", borderRadius: 12, border: "2px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.1)", color: "#fff", fontSize: 15, outline: "none", boxSizing: "border-box" }}
+            <input ref={openNameRef} autoFocus placeholder="Ex: João Silva" style={{ display: "block", width: "100%", padding: "12px 16px", borderRadius: 12, border: "2px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.1)", color: "#fff", fontSize: 15, outline: "none", boxSizing: "border-box" }}
               onFocus={(e) => e.target.style.borderColor = "rgba(255,255,255,0.6)"}
               onBlur={(e) => e.target.style.borderColor = "rgba(255,255,255,0.2)"}
-              onKeyDown={(e) => { if (e.key === "Enter") { setShowOpenDialog(false); openTable(); } }} />
+              onKeyDown={(e) => { if (e.key === "Enter") { setShowOpenDialog(false); openTable(e.currentTarget.value); } }} />
             <small style={{ display: "block", opacity: 0.5, marginTop: 4, fontSize: 12 }}>Deixe em branco para pular</small>
             <div style={{ display: "flex", gap: 10, marginTop: 20, justifyContent: "flex-end" }}>
               <button className="ghost" onClick={() => setShowOpenDialog(false)} style={{ color: "rgba(255,255,255,0.7)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 12, padding: "10px 20px", fontSize: 14 }}>Cancelar</button>
-              <button onClick={() => { setShowOpenDialog(false); openTable(); }} style={{ background: "#fff", color: "#1e3a5f", border: "none", borderRadius: 12, padding: "10px 24px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Abrir Mesa</button>
+              <button onClick={() => { const val = openNameRef.current?.value ?? ""; setShowOpenDialog(false); openTable(val); }} style={{ background: "#fff", color: "#1e3a5f", border: "none", borderRadius: 12, padding: "10px 24px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Abrir Mesa</button>
             </div>
           </div>
         </div>
@@ -434,7 +434,7 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
             <div
               key={table.id}
               onClick={() => {
-                if (table.status === "LIVRE") { setSelectedTable(table); setOpenCustomerName(""); setShowOpenDialog(true); }
+                if (table.status === "LIVRE") { setSelectedTable(table); setShowOpenDialog(true); }
                 else { setSelectedTable(table); setOrders([]); setView("order"); loadTableOrders(); }
               }}
               style={{
