@@ -410,13 +410,20 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
         <span style={{ color: "var(--text-dim)", fontSize: 13 }}>{tables.filter((t) => t.status !== "LIVRE").length} ocupadas · {tables.filter((t) => t.status === "LIVRE").length} livres</span>
       </div>
       {showOpenDialog && selectedTable && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "grid", placeItems: "center", zIndex: 999 }} onClick={() => setShowOpenDialog(false)}>
-          <div style={{ background: "var(--surface)", borderRadius: 16, padding: 28, width: 340, maxWidth: "90vw" }} onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ marginTop: 0 }}>Abrir Mesa {selectedTable.name}</h3>
-            <label>Nome do cliente (opcional)<input value={openCustomerName} onChange={(e) => setOpenCustomerName(e.target.value)} autoFocus placeholder="Ex: João Silva" onKeyDown={(e) => { if (e.key === "Enter") { setShowOpenDialog(false); openTable(); } }} /></label>
-            <div style={{ display: "flex", gap: 8, marginTop: 16, justifyContent: "flex-end" }}>
-              <button className="ghost" onClick={() => setShowOpenDialog(false)}>Cancelar</button>
-              <button onClick={() => { setShowOpenDialog(false); openTable(); }}>Abrir Mesa</button>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "grid", placeItems: "center", zIndex: 999, backdropFilter: "blur(4px)" }} onClick={() => setShowOpenDialog(false)}>
+          <div style={{ background: "linear-gradient(135deg, #1e3a5f, #2563eb)", borderRadius: 20, padding: 36, width: 380, maxWidth: "90vw", boxShadow: "0 20px 60px rgba(37,99,235,0.4)", color: "#fff" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontSize: 48, textAlign: "center", marginBottom: 8 }}>🍽️</div>
+            <h2 style={{ margin: "0 0 4px", textAlign: "center", fontSize: 24 }}>Abrir Mesa {selectedTable.name}</h2>
+            <p style={{ textAlign: "center", opacity: 0.8, margin: "0 0 20px", fontSize: 14 }}>Informe o nome do cliente para iniciar o atendimento</p>
+            <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 4, opacity: 0.9 }}>Nome do cliente</label>
+            <input value={openCustomerName} onChange={(e) => setOpenCustomerName(e.target.value)} autoFocus placeholder="Ex: João Silva" style={{ display: "block", width: "100%", padding: "12px 16px", borderRadius: 12, border: "2px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.1)", color: "#fff", fontSize: 15, outline: "none", boxSizing: "border-box" }}
+              onFocus={(e) => e.target.style.borderColor = "rgba(255,255,255,0.6)"}
+              onBlur={(e) => e.target.style.borderColor = "rgba(255,255,255,0.2)"}
+              onKeyDown={(e) => { if (e.key === "Enter") { setShowOpenDialog(false); openTable(); } }} />
+            <small style={{ display: "block", opacity: 0.5, marginTop: 4, fontSize: 12 }}>Deixe em branco para pular</small>
+            <div style={{ display: "flex", gap: 10, marginTop: 20, justifyContent: "flex-end" }}>
+              <button className="ghost" onClick={() => setShowOpenDialog(false)} style={{ color: "rgba(255,255,255,0.7)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 12, padding: "10px 20px", fontSize: 14 }}>Cancelar</button>
+              <button onClick={() => { setShowOpenDialog(false); openTable(); }} style={{ background: "#fff", color: "#1e3a5f", border: "none", borderRadius: 12, padding: "10px 24px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Abrir Mesa</button>
             </div>
           </div>
         </div>
