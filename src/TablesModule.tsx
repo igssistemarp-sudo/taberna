@@ -238,7 +238,7 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
               <div className="list-row" key={item.id ?? idx}>
                 <strong>{item.nameSnapshot}</strong>
                 <span>{item.quantity}x {money(item.unitPriceCents)}</span>
-                <span>{item.note && <small style={{ color: "var(--accent-light)" }}>{item.note}</small>}</span>
+                <span>{item.note && <small style={{ color: "#b45309", background: "#fef3c7", fontWeight: 800, fontSize: 13, padding: "2px 10px", borderRadius: 6, textTransform: "uppercase", letterSpacing: "0.3px" }}>{item.note}</small>}</span>
                 <span>{money(item.totalCents)}</span>
                 <button className="ghost danger" onClick={() => { setCancelItemId(item.id); setCancelReason(""); }}><Trash2 size={14} /></button>
               </div>
