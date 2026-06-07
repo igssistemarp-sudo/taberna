@@ -49,11 +49,18 @@ export default function CadastroView({ data, money, companyDraft, setCompanyDraf
         </div>
 
         <div className="cadastro-layout">
-          <div className="cadastro-menu">
+          <aside className="cadastro-menu">
+            <div className="cadastro-menu-header">
+              <span>Menu</span>
+              <strong>Cadastro</strong>
+            </div>
             {sections.map(([key, label]) => (
-              <button key={key} type="button" className={section === key ? "active" : ""} onClick={() => setSection(key)}>{label}</button>
+              <button key={key} type="button" className={section === key ? "active" : ""} onClick={() => setSection(key)}>
+                <span className="cadastro-menu-label">{label}</span>
+                <span className="cadastro-menu-arrow">›</span>
+              </button>
             ))}
-          </div>
+          </aside>
 
           <div className="cadastro-content">
             {section === "produtos" ? (
