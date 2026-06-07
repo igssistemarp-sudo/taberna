@@ -607,10 +607,36 @@ app.post("/api/payment-methods", requireRole("ADMIN", "GERENTE", "CAIXA"), async
 app.put("/api/payment-methods/:id", requireRole("ADMIN", "GERENTE", "CAIXA"), async (req: AuthedRequest, res, next) => { try { const body = z.object({ name: z.string().min(2).optional(), allowFee: z.boolean().optional(), active: z.boolean().optional() }).parse(req.body); res.json(await prisma.paymentMethod.update({ where: { id: asString(req.params.id) }, data: body })); } catch (error) { next(error); } });
 app.delete("/api/payment-methods/:id", requireRole("ADMIN", "GERENTE"), async (req: AuthedRequest, res, next) => { try { await prisma.paymentMethod.delete({ where: { id: asString(req.params.id) } }); res.status(204).end(); } catch (error) { next(error); } });
 
+const tableStatuses = ["LIVRE", "OCUPADA", "AGUARDANDO_PREPARO", "PRONTO", "FECHANDO_CONTA", "AGUARDANDO_PAGAMENTO", "BLOQUEADA"] as const;
+
 app.get("/api/tables", async (_req, res) => res.json(await prisma.serviceTable.findMany({ orderBy: { name: "asc" } })));
-app.post("/api/tables", requireRole("ADMIN", "GERENTE", "CAIXA", "GARCOM"), async (req: AuthedRequest, res, next) => { try { const body = z.object({ name: z.string().min(2), status: z.enum(["LIVRE", "OCUPADA", "AGUARDANDO_PREPARO", "PRONTO", "FECHANDO_CONTA"]).default("LIVRE"), waiterName: optionalText, customerName: optionalText, active: z.boolean().default(true), notes: optionalText }).parse(req.body); res.status(201).json(await prisma.serviceTable.create({ data: body })); } catch (error) { next(error); } });
-app.put("/api/tables/:id", requireRole("ADMIN", "GERENTE", "CAIXA", "GARCOM"), async (req: AuthedRequest, res, next) => { try { const body = z.object({ name: z.string().min(2).optional(), status: z.enum(["LIVRE", "OCUPADA", "AGUARDANDO_PREPARO", "PRONTO", "FECHANDO_CONTA"]).optional(), waiterName: optionalText, customerName: optionalText, active: z.boolean().optional(), notes: optionalText }).parse(req.body); res.json(await prisma.serviceTable.update({ where: { id: asString(req.params.id) }, data: body })); } catch (error) { next(error); } });
+app.post("/api/tables", requireRole("ADMIN", "GERENTE", "CAIXA", "GARCOM"), async (req: AuthedRequest, res, next) => { try { const body = z.object({ name: z.string().min(2), status: z.enum(tableStatuses).default("LIVRE"), waiterName: optionalText, customerName: optionalText, active: z.boolean().default(true), notes: optionalText }).parse(req.body); res.status(201).json(await prisma.serviceTable.create({ data: body })); } catch (error) { next(error); } });
+app.put("/api/tables/:id", requireRole("ADMIN", "GERENTE", "CAIXA", "GARCOM"), async (req: AuthedRequest, res, next) => { try { const body = z.object({ name: z.string().min(2).optional(), status: z.enum(tableStatuses).optional(), waiterName: optionalText, customerName: optionalText, active: z.boolean().optional(), notes: optionalText }).parse(req.body); res.json(await prisma.serviceTable.update({ where: { id: asString(req.params.id) }, data: body })); } catch (error) { next(error); } });
 app.delete("/api/tables/:id", requireRole("ADMIN", "GERENTE"), async (req: AuthedRequest, res, next) => { try { await prisma.serviceTable.delete({ where: { id: asString(req.params.id) } }); res.status(204).end(); } catch (error) { next(error); } });
+
+app.put("/api/tables/:id/open", requireRole("ADMIN", "GERENTE", "CAIXA", "GARCOM"), async (req: AuthedRequest, res, next) => {
+  try { const table = await prisma.serviceTable.findUnique({ where: { id: asString(req.params.id) } }); if (!table) return res.status(404).json({ message: "Mesa nao encontrada." }); if (table.status !== "LIVRE") return res.status(400).json({ message: "Mesa ja esta ocupada." }); const updated = await prisma.serviceTable.update({ where: { id: table.id }, data: { status: "OCUPADA", waiterName: req.user?.name } }); await prisma.tableLog.create({ data: { tableId: table.id, userId: req.user?.id, action: "ABERTURA", description: `Mesa ${table.name} aberta por ${req.user?.name}` } }); res.json(updated); } catch (error) { next(error); }
+});
+
+app.put("/api/tables/:id/close", requireRole("ADMIN", "GERENTE", "CAIXA", "GARCOM"), async (req: AuthedRequest, res, next) => {
+  try { const order = await prisma.order.findFirst({ where: { tableId: asString(req.params.id), status: { notIn: ["CANCELADO", "PAGO"] } } }); if (order) return res.status(400).json({ message: "Existe pedido em aberto nesta mesa. Finalize o pedido primeiro." }); const table = await prisma.serviceTable.findUnique({ where: { id: asString(req.params.id) } }); if (!table) return res.status(404).json({ message: "Mesa nao encontrada." }); const updated = await prisma.serviceTable.update({ where: { id: table.id }, data: { status: "LIVRE", waiterName: null, customerName: null } }); await prisma.tableLog.create({ data: { tableId: table.id, userId: req.user?.id, action: "LIBERACAO", description: `Mesa ${table.name} liberada por ${req.user?.name}` } }); res.json(updated); } catch (error) { next(error); }
+});
+
+app.post("/api/tables/transfer", requireRole("ADMIN", "GERENTE", "CAIXA", "GARCOM"), async (req: AuthedRequest, res, next) => {
+  try { const body = z.object({ fromTableId: z.string(), toTableId: z.string() }).parse(req.body); if (body.fromTableId === body.toTableId) return res.status(400).json({ message: "Selecione mesas diferentes." }); const [fromTable, toTable] = await Promise.all([prisma.serviceTable.findUnique({ where: { id: body.fromTableId } }), prisma.serviceTable.findUnique({ where: { id: body.toTableId } })]); if (!fromTable || !toTable) return res.status(404).json({ message: "Mesa nao encontrada." }); if (toTable.status !== "LIVRE") return res.status(400).json({ message: "Mesa destino precisa estar livre." }); const orders = await prisma.order.findMany({ where: { tableId: body.fromTableId, status: { notIn: ["CANCELADO", "PAGO"] } } }); if (!orders.length) return res.status(400).json({ message: "Mesa origem nao possui pedidos." }); await prisma.$transaction(async (tx) => { for (const order of orders) await tx.order.update({ where: { id: order.id }, data: { tableId: body.toTableId } }); await tx.serviceTable.update({ where: { id: body.fromTableId }, data: { status: "LIVRE", waiterName: null, customerName: null } }); await tx.serviceTable.update({ where: { id: body.toTableId }, data: { status: "OCUPADA", waiterName: fromTable.waiterName } }); await tx.tableLog.create({ data: { tableId: body.fromTableId, userId: req.user?.id, action: "TRANSFERENCIA_SAIDA", description: `Mesa ${fromTable.name} transferida para ${toTable.name}` } }); await tx.tableLog.create({ data: { tableId: body.toTableId, userId: req.user?.id, action: "TRANSFERENCIA_ENTRADA", description: `Mesa ${toTable.name} recebeu itens da ${fromTable.name}` } }); }); res.json({ ok: true }); } catch (error) { next(error); }
+});
+
+app.post("/api/tables/merge", requireRole("ADMIN", "GERENTE", "CAIXA", "GARCOM"), async (req: AuthedRequest, res, next) => {
+  try { const body = z.object({ mainTableId: z.string(), secondaryTableIds: z.array(z.string()).min(1) }).parse(req.body); if (body.secondaryTableIds.includes(body.mainTableId)) return res.status(400).json({ message: "Mesa principal nao pode estar entre as secundarias." }); const [mainTable, ...secondaryTables] = await Promise.all([prisma.serviceTable.findUnique({ where: { id: body.mainTableId } }), ...body.secondaryTableIds.map((id) => prisma.serviceTable.findUnique({ where: { id } }))]); if (!mainTable || secondaryTables.some((t) => !t)) return res.status(404).json({ message: "Mesa nao encontrada." }); await prisma.$transaction(async (tx) => { for (const sec of secondaryTables) { const secOrders = await tx.order.findMany({ where: { tableId: sec!.id, status: { notIn: ["CANCELADO", "PAGO"] } } }); for (const order of secOrders) await tx.order.update({ where: { id: order.id }, data: { tableId: body.mainTableId } }); await tx.serviceTable.update({ where: { id: sec!.id }, data: { status: "LIVRE", waiterName: null, customerName: null } }); await tx.tableLog.create({ data: { tableId: sec!.id, userId: req.user?.id, action: "JUNCAO", description: `Mesa ${sec!.name} juntada a ${mainTable.name}` } }); } await tx.tableLog.create({ data: { tableId: body.mainTableId, userId: req.user?.id, action: "JUNCAO", description: `Mesa ${mainTable.name} recebeu mesas ${secondaryTables.map((t) => t!.name).join(", ")}` } }); }); res.json({ ok: true }); } catch (error) { next(error); }
+});
+
+app.get("/api/tables/:id/pre-conta", async (req, res, next) => {
+  try { const table = await prisma.serviceTable.findUnique({ where: { id: asString(req.params.id) } }); if (!table) return res.status(404).json({ message: "Mesa nao encontrada." }); const orders = await prisma.order.findMany({ where: { tableId: table.id, status: { notIn: ["CANCELADO", "PAGO"] } }, include: { items: { include: { additives: true } }, payments: true, waiter: true, customer: true } }); res.json({ table, orders }); } catch (error) { next(error); }
+});
+
+app.get("/api/tables/:id/logs", async (req, res, next) => {
+  try { const logs = await prisma.tableLog.findMany({ where: { tableId: asString(req.params.id) }, orderBy: { createdAt: "desc" }, take: 50, include: { user: { select: { name: true } } } }); res.json(logs); } catch (error) { next(error); }
+});
 
 app.get("/api/suppliers", async (_req, res) => res.json(await prisma.supplier.findMany({ orderBy: { name: "asc" } })));
 app.post("/api/suppliers", requireRole("ADMIN", "GERENTE", "CAIXA"), async (req: AuthedRequest, res, next) => { try { const body = z.object({ name: z.string().min(2), document: optionalText, phone: optionalText, email: optionalText, active: z.boolean().default(true) }).parse(req.body); res.status(201).json(await prisma.supplier.create({ data: body })); } catch (error) { next(error); } });
@@ -671,7 +697,10 @@ const createOrderSchema = z.object({
   changeForCents: z.number().int().default(0),
   deliveryDriverName: optionalText,
   notes: optionalText,
-  items: z.array(orderItemSchema).min(1),
+  discountCents: z.number().int().default(0),
+  discountPercent: z.number().default(0),
+  serviceFeeCents: z.number().int().default(0),
+  items: z.array(orderItemSchema),
   payments: z.array(z.object({ paymentMethodId: z.string().optional().nullable(), methodNameSnapshot: z.string().min(2), amountCents: z.number().int().nonnegative(), feeCents: z.number().int().default(0), changeCents: z.number().int().default(0) })).default([])
 });
 
@@ -722,6 +751,9 @@ app.post("/api/orders", requireRole("ADMIN", "GERENTE", "CAIXA", "GARCOM"), asyn
         number,
         type: body.type,
         status: body.type === "ONLINE" ? "NOVO" : "ACEITO",
+        discountCents: body.discountCents,
+        discountPercent: body.discountPercent,
+        serviceFeeCents: body.serviceFeeCents,
         tableId: body.tableId,
         customerId: body.customerId,
         neighborhoodId: selectedNeighborhood?.id,
@@ -798,17 +830,40 @@ app.post("/api/orders/:id/cancel", requireRole("ADMIN", "GERENTE"), async (req: 
   } catch (error) { next(error); }
 });
 
+app.post("/api/orders/:id/items", requireRole("ADMIN", "GERENTE", "CAIXA", "GARCOM"), async (req: AuthedRequest, res, next) => {
+  try {
+    const body = z.object({ productId: z.string().optional().nullable(), nameSnapshot: z.string().min(1), quantity: z.number().int().positive(), unitPriceCents: z.number().int().nonnegative(), totalCents: z.number().int().nonnegative(), printTarget: z.string().default("COZINHA"), note: optionalText, additives: z.array(z.object({ additionalId: z.string().optional().nullable(), name: z.string().min(1), quantity: z.number().int().positive(), unitPriceCents: z.number().int().nonnegative() })).default([]) }).parse(req.body);
+    const order = await prisma.order.findUnique({ where: { id: asString(req.params.id) } });
+    if (!order) return res.status(404).json({ message: "Pedido nao encontrado." });
+    const created = await prisma.orderItem.create({ data: { orderId: order.id, productId: body.productId, nameSnapshot: body.nameSnapshot, quantity: body.quantity, unitPriceCents: body.unitPriceCents, totalCents: body.totalCents, printTarget: body.printTarget as PrinterType, note: body.note, additives: { create: body.additives.map((a) => ({ additionalId: a.additionalId, nameSnapshot: a.name, quantity: a.quantity, unitPriceCents: a.unitPriceCents, totalCents: a.quantity * a.unitPriceCents })) } }, include: { additives: true } });
+    await audit(req.user?.id, "ADD_ITEM", "order", order.id, { itemId: created.id, ...body });
+    res.status(201).json(created);
+  } catch (error) { next(error); }
+});
+
+app.post("/api/orders/:id/cancel-item", requireRole("ADMIN", "GERENTE", "CAIXA", "GARCOM"), async (req: AuthedRequest, res, next) => {
+  try { const body = z.object({ itemId: z.string(), reason: z.string().min(2) }).parse(req.body); const item = await prisma.orderItem.findUnique({ where: { id: body.itemId }, include: { order: true } }); if (!item) return res.status(404).json({ message: "Item nao encontrado." }); if (item.cancelledAt) return res.status(400).json({ message: "Item ja cancelado." }); await prisma.orderItem.update({ where: { id: item.id }, data: { cancelledAt: new Date(), cancelledReason: body.reason, totalCents: 0 } }); await audit(req.user?.id, "CANCEL_ITEM", "order", item.orderId, { itemId: body.itemId, reason: body.reason }); res.json({ ok: true }); } catch (error) { next(error); }
+});
+
+app.post("/api/orders/:id/apply-discount", requireRole("ADMIN", "GERENTE", "CAIXA"), async (req: AuthedRequest, res, next) => {
+  try { const body = z.object({ discountCents: z.number().int().default(0), discountPercent: z.number().default(0) }).parse(req.body); const updated = await prisma.order.update({ where: { id: asString(req.params.id) }, data: { discountCents: body.discountCents, discountPercent: body.discountPercent } }); res.json(updated); } catch (error) { next(error); }
+});
+
 app.post("/api/orders/:id/pay", requireRole("ADMIN", "GERENTE", "CAIXA"), async (req: AuthedRequest, res, next) => {
   try {
-    const body = z.object({ payments: z.array(z.object({ paymentMethodId: z.string().optional().nullable(), methodNameSnapshot: z.string().min(2), amountCents: z.number().int().nonnegative(), feeCents: z.number().int().default(0), changeCents: z.number().int().default(0) })) }).parse(req.body);
-    const order = await prisma.order.findUnique({ where: { id: asString(req.params.id) }, include: { items: true } });
+    const body = z.object({ customerId: optionalText, payments: z.array(z.object({ paymentMethodId: z.string().optional().nullable(), methodNameSnapshot: z.string().min(2), amountCents: z.number().int().nonnegative(), feeCents: z.number().int().default(0), changeCents: z.number().int().default(0) })), generateReceivable: z.boolean().default(false), receivableDueDate: z.string().optional() }).parse(req.body);
+    const order = await prisma.order.findUnique({ where: { id: asString(req.params.id) }, include: { items: true, customer: true } });
     if (!order) return res.status(404).json({ message: "Pedido nao encontrado." });
+    if (body.generateReceivable && !body.customerId && !order.customerId) return res.status(400).json({ message: "Selecione um cliente para pagamento a prazo." });
     const result = await prisma.$transaction(async (tx) => {
       const cashRegister = await tx.cashRegister.findFirst({ where: { closedAt: null } });
       if (!cashRegister) throw new Error("Abra o caixa para receber pagamentos.");
       await tx.orderPayment.createMany({ data: body.payments.map((payment) => ({ ...payment, orderId: order.id })) });
       const updated = await tx.order.update({ where: { id: order.id }, data: { status: "PAGO" } });
       await tx.cashMovement.createMany({ data: body.payments.map((payment) => ({ cashRegisterId: cashRegister.id, type: "PAGAMENTO", description: `Recebimento pedido #${order.number}`, amountCents: payment.amountCents, paymentMethodName: payment.methodNameSnapshot, orderId: order.id, userId: req.user?.id })) });
+      if (body.generateReceivable) {
+        await tx.receivable.create({ data: { customerId: body.customerId ?? order.customerId, customerName: order.customerNameSnapshot, description: `Pedido #${order.number} - ${order.customerNameSnapshot ?? "Pagamento a prazo"}`, amountCents: body.payments.reduce((s, p) => s + p.amountCents, 0), dueDate: body.receivableDueDate ? new Date(body.receivableDueDate) : new Date(Date.now() + 30 * 86400000), status: "ABERTO" } });
+      }
       return updated;
     });
     if (result.tableId) await prisma.serviceTable.update({ where: { id: result.tableId }, data: { status: "LIVRE", waiterName: null, customerName: null } });
