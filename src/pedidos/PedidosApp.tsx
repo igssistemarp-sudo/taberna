@@ -485,6 +485,9 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
   const comandas = tables.filter((table) => table.name.toLowerCase().startsWith("comanda"));
   const filteredProducts = searchTerm ? products.filter((product) => product.name.toLowerCase().includes(searchTerm.toLowerCase()) || String(product.code).includes(searchTerm) || (product.category?.name ?? "").toLowerCase().includes(searchTerm.toLowerCase())) : products;
 
+  if (stage === "config") {
+    return renderConfigScreen();
+  }
   if (!activeConfig) {
     return renderConfigScreen();
   }
