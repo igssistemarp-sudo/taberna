@@ -224,7 +224,7 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
         {error && <div className="toast" style={{ position: "static", marginBottom: 8 }}>{error}<button className="ghost" style={{ marginLeft: 8 }} onClick={() => setError(null)}>OK</button></div>}
         {loading && <div className="loading-bar" />}
         <div className="row-between">
-          <div><h2 style={{ margin: 0 }}>Mesa {selectedTable.name}</h2><small style={{ color: "var(--text-muted)" }}>{statusLabel[selectedTable.status]} · {orders[0]?.createdAt ? new Date(orders[0].createdAt).toLocaleString("pt-BR") : ""}</small></div>
+          <div><h2 style={{ margin: 0 }}>{selectedTable.name}</h2><small style={{ color: "var(--text-muted)" }}>{statusLabel[selectedTable.status]} · {orders[0]?.createdAt ? new Date(orders[0].createdAt).toLocaleString("pt-BR") : ""}{selectedTable.customerName ? ` · Cliente: ${selectedTable.customerName}` : ""}</small></div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button onClick={() => { setView("transfer"); setTransferTarget(""); }} style={{ background: "linear-gradient(135deg, #f59e0b, #d97706)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(245,158,11,0.3)" }}><ArrowLeftRight size={15} /> Transferir</button>
             <button onClick={() => { setView("merge"); setMergeSources([]); }} style={{ background: "linear-gradient(135deg, #8b5cf6, #7c3aed)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(139,92,246,0.3)" }}><Merge size={15} /> Juntar</button>
@@ -413,7 +413,7 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "grid", placeItems: "center", zIndex: 999, backdropFilter: "blur(4px)" }} onClick={() => setShowOpenDialog(false)}>
           <div style={{ background: "linear-gradient(135deg, #1e3a5f, #2563eb)", borderRadius: 20, padding: 36, width: 380, maxWidth: "90vw", boxShadow: "0 20px 60px rgba(37,99,235,0.4)", color: "#fff" }} onClick={(e) => e.stopPropagation()}>
             <div style={{ fontSize: 48, textAlign: "center", marginBottom: 8 }}>🍽️</div>
-            <h2 style={{ margin: "0 0 4px", textAlign: "center", fontSize: 24 }}>Abrir Mesa {selectedTable.name}</h2>
+            <h2 style={{ margin: "0 0 4px", textAlign: "center", fontSize: 24 }}>Abrir {selectedTable.name}</h2>
             <p style={{ textAlign: "center", opacity: 0.8, margin: "0 0 20px", fontSize: 14 }}>Informe o nome do cliente para iniciar o atendimento</p>
             <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 4, opacity: 0.9 }}>Nome do cliente</label>
             <input value={openCustomerName} onChange={(e) => setOpenCustomerName(e.target.value)} autoFocus placeholder="Ex: João Silva" style={{ display: "block", width: "100%", padding: "12px 16px", borderRadius: 12, border: "2px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.1)", color: "#fff", fontSize: 15, outline: "none", boxSizing: "border-box" }}
@@ -454,9 +454,9 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
               <div style={{ width: 48, height: 48, borderRadius: "50%", background: color, display: "grid", placeItems: "center", margin: "0 auto 8px", fontSize: 20, fontWeight: 900, color: "#fff" }}>
                 {table.name.replace(/\D/g, "")}
               </div>
-              <strong style={{ display: "block", fontSize: 15 }}>Mesa {table.name}</strong>
+              <strong style={{ display: "block", fontSize: 15 }}>{table.name}</strong>
               <span style={{ fontSize: 12, color: color, fontWeight: 700 }}>{statusLabel[table.status] ?? table.status}</span>
-              {table.waiterName && <small style={{ display: "block", color: "var(--text-dim)", marginTop: 4 }}>{table.waiterName}</small>}
+              {table.customerName && <small style={{ display: "block", color: "var(--accent)", marginTop: 4, fontWeight: 600 }}>{table.customerName}</small>}
             </div>
           );
         })}
