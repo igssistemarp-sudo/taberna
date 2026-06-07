@@ -1,5 +1,5 @@
 import React from "react";
-import { Plus, Trash2, X, Search, DollarSign, ChevronLeft, Split, Merge, Printer, Users, UserRound, ArrowLeftRight } from "lucide-react";
+import { Plus, Trash2, X, Search, DollarSign, ChevronLeft, Split, Merge, Printer, Users, UserRound, ArrowLeftRight, Table, UtensilsCrossed } from "lucide-react";
 
 type MoneyFn = (value: number) => string;
 type TableData = { id: string; name: string; status: string; waiterName?: string | null; customerName?: string | null; active: boolean };
@@ -451,8 +451,8 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
               onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${color}88`; e.currentTarget.style.transform = "translateY(-2px)" }}
               onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${color}44`; e.currentTarget.style.transform = "none" }}
             >
-              <div style={{ width: 48, height: 48, borderRadius: "50%", background: color, display: "grid", placeItems: "center", margin: "0 auto 8px", fontSize: 20, fontWeight: 900, color: "#fff" }}>
-                {table.name.replace(/\D/g, "")}
+              <div style={{ width: 48, height: 48, borderRadius: "50%", background: color, display: "grid", placeItems: "center", margin: "0 auto 8px", color: "#fff" }}>
+                {table.status === "LIVRE" ? <Table size={22} /> : <Users size={22} />}
               </div>
               <strong style={{ display: "block", fontSize: 15 }}>{table.name}</strong>
               <span style={{ fontSize: 12, color: color, fontWeight: 700 }}>{statusLabel[table.status] ?? table.status}</span>
