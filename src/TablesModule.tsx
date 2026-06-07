@@ -519,7 +519,7 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
               {table.status !== "LIVRE" && (() => {
                 const tblOrders = (initialData?.orders ?? []).filter((o: any) => o.tableId === table.id && o.status !== "PAGO" && o.status !== "CANCELADO");
                 const total = tblOrders.reduce((s: number, o: any) => s + (o.items ?? []).reduce((si: number, i: any) => si + (i.cancelledAt ? 0 : i.totalCents + (i.additives ?? []).reduce((sa: number, a: any) => sa + a.totalCents, 0)), 0), 0);
-                return total > 0 ? <div style={{ fontWeight: 800, fontSize: 16, color: color, marginTop: 4 }}>{money(total)}</div> : null;
+                return total > 0 ? <div style={{ fontWeight: 800, fontSize: 17, color: "#d97706", marginTop: 4, background: "rgba(251,191,36,0.15)", borderRadius: 8, padding: "2px 8px", display: "inline-block" }}>{money(total)}</div> : null;
               })()}
             </div>
           );
