@@ -51,7 +51,7 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
   const [tables, setTables] = React.useState<TableData[]>(initialData?.tables ?? []);
   const [selectedTable, setSelectedTable] = React.useState<TableData | null>(null);
   const [orders, setOrders] = React.useState<any[]>([]);
-  const [view, setView] = React.useState<"grid" | "order" | "payment" | "merge">("grid");
+  const [view, setView] = React.useState<"grid" | "order" | "payment">("grid");
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -69,6 +69,7 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
   const [transferTarget, setTransferTarget] = React.useState("");
   const [transferItemIds, setTransferItemIds] = React.useState<string[]>([]);
   const [showTransfer, setShowTransfer] = React.useState(false);
+  const [showMergeModal, setShowMergeModal] = React.useState(false);
   const [mergeSources, setMergeSources] = React.useState<string[]>([]);
 
   const [cancelReason, setCancelReason] = React.useState("");
@@ -175,9 +176,9 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
     try {
       await api("/api/tables/merge", { method: "POST", body: JSON.stringify({ mainTableId: selectedTable.id, secondaryTableIds: mergeSources }) });
       setTables(await api("/api/tables"));
-      setView("grid");
-      setSelectedTable(null);
+      setShowMergeModal(false);
       setMergeSources([]);
+      await loadTableOrders();
     } catch (e: any) { setError(e.message); } finally { setLoading(false); }
   }
 
@@ -228,7 +229,7 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
           <div><h2 style={{ margin: 0 }}>{selectedTable.name}</h2><small style={{ color: "var(--text-muted)" }}>{statusLabel[selectedTable.status]} · {orders[0]?.createdAt ? new Date(orders[0].createdAt).toLocaleString("pt-BR") : ""}</small><div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, background: "linear-gradient(135deg, #dbeafe, #eff6ff)", borderRadius: 50, padding: "4px 14px 4px 10px", width: "fit-content", border: "1px solid #93c5fd" }}><UserRound size={14} style={{ color: "#2563eb" }} /><span style={{ fontSize: 13, fontWeight: 600, color: "#1e40af" }}>Cliente:</span><input value={selectedTable.customerName ?? ""} autoFocus={!selectedTable.customerName} onChange={async (e) => { const v = e.target.value; await api(`/api/tables/${selectedTable.id}`, { method: "PUT", body: JSON.stringify({ customerName: v || null }) }); const updated = await api("/api/tables"); setTables(updated); setSelectedTable(updated.find((t: any) => t.id === selectedTable.id) ?? null); }} style={{ background: "transparent", border: "none", color: "#1e3a5f", fontWeight: 700, fontSize: 14, padding: "2px 4px", minWidth: 100, outline: "none" }} placeholder="Digite o nome..." /></div></div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button onClick={() => { setTransferTarget(""); setTransferItemIds([]); setShowTransfer(true); }} style={{ background: "linear-gradient(135deg, #f59e0b, #d97706)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(245,158,11,0.3)" }}><ArrowLeftRight size={15} /> Transferir</button>
-            <button onClick={() => { setView("merge"); setMergeSources([]); }} style={{ background: "linear-gradient(135deg, #8b5cf6, #7c3aed)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(139,92,246,0.3)" }}><Merge size={15} /> Juntar</button>
+            <button onClick={() => { setMergeSources([]); setShowMergeModal(true); }} style={{ background: "linear-gradient(135deg, #8b5cf6, #7c3aed)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(139,92,246,0.3)" }}><Merge size={15} /> Juntar</button>
             <button onClick={() => setView("payment")} style={{ background: "linear-gradient(135deg, #10b981, #059669)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(16,185,129,0.3)" }}><DollarSign size={15} /> Pagamento</button>
             <button onClick={() => { setView("grid"); setSelectedTable(null); setOrders([]); }} style={{ background: "linear-gradient(135deg, #64748b, #475569)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(100,116,139,0.3)" }}><ChevronLeft size={15} /> Voltar</button>
           </div>
@@ -347,13 +348,36 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
           </div>
         )}
 
-        {(view as string) === "merge" && (
-          <section className="panel">
-            <h3>Juntar Mesas em {selectedTable.name}</h3>
-            <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Selecione as mesas para juntar:</p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>{tables.filter((t) => t.id !== selectedTable.id && t.status === "OCUPADA").map((t) => (<button key={t.id} className={mergeSources.includes(t.id) ? "" : "ghost"} onClick={() => setMergeSources((prev) => prev.includes(t.id) ? prev.filter((id) => id !== t.id) : [...prev, t.id])}>Mesa {t.name}</button>))}</div>
-            <div className="row-actions"><button disabled={!mergeSources.length} onClick={mergeTables}>Juntar {mergeSources.length} mesa(s)</button><button className="ghost" onClick={() => setView("order")}>Cancelar</button></div>
-          </section>
+        {showMergeModal && selectedTable && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.6)", zIndex: 998, display: "grid", placeItems: "center", backdropFilter: "blur(4px)" }} onClick={() => setShowMergeModal(false)}>
+            <div style={{ background: "#fff", borderRadius: 20, width: 440, maxWidth: "96vw", boxShadow: "0 25px 80px rgba(0,0,0,0.2)", overflow: "hidden" }} onClick={(e) => e.stopPropagation()}>
+              <div className="row-between" style={{ padding: "16px 24px", borderBottom: "1px solid #e2e8f0", background: "#f8fafc" }}>
+                <h3 style={{ margin: 0, fontSize: 17, color: "#1e293b" }}><Merge size={18} style={{ marginRight: 8, color: "#8b5cf6" }} />Juntar Mesas</h3>
+                <button className="ghost" onClick={() => setShowMergeModal(false)} style={{ borderRadius: 10, padding: 6 }}><X size={18} /></button>
+              </div>
+              <div style={{ padding: "20px 24px" }}>
+                <p style={{ fontSize: 14, color: "#475569", margin: "0 0 16px" }}>Selecione as mesas ocupadas para juntar com <strong>{selectedTable.name}</strong>.<br /><small style={{ color: "#94a3b8" }}>Os itens serão movidos para esta mesa e as mesas selecionadas serão liberadas.</small></p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {tables.filter((t) => t.id !== selectedTable.id && t.status === "OCUPADA").map((t) => {
+                    const checked = mergeSources.includes(t.id);
+                    return (
+                      <label key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", borderRadius: 12, border: checked ? "2px solid #8b5cf6" : "1px solid #e2e8f0", background: checked ? "#f5f3ff" : "#fff", cursor: "pointer" }}>
+                        <input type="checkbox" checked={checked} onChange={() => setMergeSources((prev) => prev.includes(t.id) ? prev.filter((id) => id !== t.id) : [...prev, t.id])} style={{ accentColor: "#8b5cf6" }} />
+                        <Users size={18} style={{ color: "#8b5cf6" }} />
+                        <span style={{ flex: 1, fontWeight: 600, color: "#1e293b" }}>{t.name}</span>
+                        {t.customerName && <small style={{ color: "#64748b" }}>{t.customerName}</small>}
+                      </label>
+                    );
+                  })}
+                  {!tables.filter((t) => t.id !== selectedTable.id && t.status === "OCUPADA").length && <p style={{ color: "#94a3b8", textAlign: "center" }}>Nenhuma mesa ocupada disponível.</p>}
+                </div>
+              </div>
+              <div style={{ padding: "16px 24px", borderTop: "1px solid #e2e8f0", display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <button className="ghost" onClick={() => setShowMergeModal(false)} style={{ borderRadius: 10, padding: "10px 20px" }}>Cancelar</button>
+                <button disabled={!mergeSources.length} onClick={mergeTables} style={{ background: !mergeSources.length ? "#cbd5e1" : "linear-gradient(135deg, #8b5cf6, #7c3aed)", color: "#fff", border: "none", borderRadius: 10, padding: "10px 24px", fontSize: 14, fontWeight: 700, cursor: !mergeSources.length ? "default" : "pointer" }}><Merge size={16} /> Juntar {mergeSources.length} mesa(s)</button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     );
