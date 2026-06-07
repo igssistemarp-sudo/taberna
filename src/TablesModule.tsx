@@ -91,12 +91,11 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
     if (!selectedTable) return;
     setLoading(true);
     try {
-      await api(`/api/tables/${selectedTable.id}/open`, { method: "PUT", body: JSON.stringify({ customerName: openCustomerName || null }) });
+      const opened = await api(`/api/tables/${selectedTable.id}/open`, { method: "PUT", body: JSON.stringify({ customerName: openCustomerName || null }) });
+      setSelectedTable(opened);
+      setTables((prev) => prev.map((t) => t.id === opened.id ? opened : t));
       await reload("/api/company", {});
-      const updated = await api("/api/tables");
-      setTables(updated);
-      setSelectedTable(updated.find((t: TableData) => t.id === selectedTable.id) ?? null);
-      const order = await api("/api/orders", { method: "POST", body: JSON.stringify({ type: "MESA", tableId: selectedTable.id, items: [], payments: [] }) });
+      const order = await api("/api/orders", { method: "POST", body: JSON.stringify({ type: "MESA", tableId: opened.id, items: [], payments: [] }) });
       setOrders([order]);
       setView("order");
     } catch (e: any) { setError(e.message); } finally { setLoading(false); }
@@ -456,7 +455,7 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
               </div>
               <strong style={{ display: "block", fontSize: 15 }}>{table.name}</strong>
               <span style={{ fontSize: 12, color: color, fontWeight: 700 }}>{statusLabel[table.status] ?? table.status}</span>
-              <small style={{ display: "block", color: "var(--accent)", marginTop: 4, fontWeight: 600, minHeight: 16, fontSize: 12 }}>{table.customerName ?? ""}</small>
+              <small style={{ display: "block", color: "#1f2937", marginTop: 4, fontWeight: 700, minHeight: 16, fontSize: 12 }}>{table.customerName ?? ""}</small>
             </div>
           );
         })}
