@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import "./styles.css";
 import CadastroView from "./CadastroView";
+import ProductsModule from "./ProductsModule";
 
 const API_URL = import.meta.env.VITE_API_URL ?? (window.location.port === "5173" ? "http://localhost:3333" : window.location.origin);
 const money = (value: number) => (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -105,7 +106,8 @@ function App() {
   const [password, setPassword] = useState("123");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState<"dashboard" | "orders" | "tables" | "customers" | "products" | "finance" | "reports" | "settings">("dashboard");
+  const [publicCompany, setPublicCompany] = useState<Company | null>(null);
+  const [page, setPage] = useState<"dashboard" | "orders" | "tables" | "customers" | "finance" | "reports" | "settings">("dashboard");
   const [data, setData] = useState<AppData | null>(null);
   const [orderDrafts, setOrderDrafts] = useState<ItemDraft[]>([emptyDraft()]);
   const [orderType, setOrderType] = useState("MESA");
@@ -116,8 +118,7 @@ function App() {
   const [orderNotes, setOrderNotes] = useState("");
   const [openingCash, setOpeningCash] = useState("0");
   const [closingCash, setClosingCash] = useState("0");
-  const [companyDraft, setCompanyDraft] = useState({ razaoSocial: "", nomeFantasia: "", onlineMenuSlug: "igs-lanchonete-pro", serviceFeeEnabled: false, serviceFeePercent: 0, openingHours: "", printerKitchenIp: "", printerBarIp: "", printerCashIp: "", printerPort: 9100, theme: "dark" });
-  const [productDraft, setProductDraft] = useState({ name: "", salePriceCents: 0, costCents: 0, stockCurrent: 0, categoryId: "", controlStock: true, onlineMenu: true, printTarget: "COZINHA", active: true });
+  const [companyDraft, setCompanyDraft] = useState({ razaoSocial: "", nomeFantasia: "", logoUrl: "", onlineMenuSlug: "igs-lanchonete-pro", serviceFeeEnabled: false, serviceFeePercent: 0, openingHours: "", printerKitchenIp: "", printerBarIp: "", printerCashIp: "", printerPort: 9100, theme: "dark" });
   const [customerDraft, setCustomerDraft] = useState({ name: "", phone: "", whatsapp: "", neighborhoodId: "", street: "", number: "", city: "", state: "", notes: "" });
   const [neighborhoodDraft, setNeighborhoodDraft] = useState({ name: "", city: "", deliveryFeeCents: 0, avgDeliveryMinutes: 30, active: true });
 
@@ -148,6 +149,7 @@ function App() {
         setCompanyDraft({
           razaoSocial: company.razaoSocial ?? "",
           nomeFantasia: company.nomeFantasia ?? "",
+          logoUrl: company.logoUrl ?? "",
           onlineMenuSlug: company.onlineMenuSlug ?? "igs-lanchonete-pro",
           serviceFeeEnabled: company.serviceFeeEnabled,
           serviceFeePercent: company.serviceFeePercent,
@@ -168,6 +170,13 @@ function App() {
 
   useEffect(() => {
     if (token) void load();
+  }, [token]);
+
+  useEffect(() => {
+    if (token) return;
+    void request("/api/company")
+      .then((company) => setPublicCompany(company))
+      .catch(() => setPublicCompany(null));
   }, [token]);
 
   async function doLogin(event: React.FormEvent) {
@@ -249,7 +258,64 @@ function App() {
   }
 
   if (!token) {
-    return <div className="login-shell"><form className="login-card" onSubmit={doLogin}><div className="logo-mark">TB</div><h1>IGS Lanchonete PRO</h1><p>Taberna Comida e Bebida</p><label>Usuário<input value={login} onChange={(e) => setLogin(e.target.value)} /></label><label>Senha<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></label>{error && <div className="alert">{error}</div>}<button disabled={loading}><LogIn size={16} /> Entrar</button></form></div>;
+    const loginCompany = publicCompany;
+    const logoText = (loginCompany?.nomeFantasia ?? "TB")
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0])
+      .join("")
+      .toUpperCase() || "TB";
+
+    return (
+      <div className="login-shell">
+        <div className="login-grid">
+          <section className="login-hero">
+            <div className="login-hero-top">
+              {loginCompany?.logoUrl ? (
+                <img className="login-company-logo" src={loginCompany.logoUrl} alt={loginCompany.nomeFantasia ?? "Logo da empresa"} />
+              ) : (
+                <div className="login-company-mark">{logoText}</div>
+              )}
+              <div className="login-hero-copy">
+                <span className="login-kicker">Sistema para lanchonete, bar e delivery</span>
+                <h1>{loginCompany?.nomeFantasia ?? "IGS Lanchonete PRO"}</h1>
+                <p>{loginCompany?.razaoSocial ?? "Taberna Comida e Bebida"}</p>
+              </div>
+            </div>
+
+            <div className="login-hero-panel">
+              <div>
+                <strong>Operação rápida</strong>
+                <span>Mesas, pedidos, cozinha, caixa e delivery em uma tela só.</span>
+              </div>
+              <div className="login-hero-metrics">
+                <span>PDV</span>
+                <span>Comandas</span>
+                <span>Caixa</span>
+                <span>Impressão</span>
+              </div>
+            </div>
+          </section>
+
+          <form className="login-card login-form-card" onSubmit={doLogin}>
+            <div className="login-form-head">
+              <span className="login-form-tag">Acesso ao sistema</span>
+              <h2>Entrar</h2>
+              <p>Use seu usuário e senha para acessar o caixa e a operação.</p>
+            </div>
+
+            <label>Usuário<input value={login} onChange={(e) => setLogin(e.target.value)} /></label>
+            <label>Senha<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></label>
+
+            {error && <div className="alert">{error}</div>}
+
+            <button disabled={loading}><LogIn size={16} /> Entrar</button>
+            <small className="login-hint">Padrão local: admin / 123</small>
+          </form>
+        </div>
+      </div>
+    );
   }
 
   const nav = [
@@ -257,7 +323,6 @@ function App() {
     ["orders", "Pedidos", ShoppingCart],
     ["tables", "Mesas", Table],
     ["customers", "Clientes", UserRound],
-    ["products", "Produtos", Package2],
     ["finance", "Financeiro", Wallet],
     ["reports", "Relatórios", BarChart3],
     ["settings", "Cadastro", Settings]
@@ -268,7 +333,6 @@ function App() {
     orders: "Pedidos",
     tables: "Mesas",
     customers: "Clientes",
-    products: "Produtos",
     finance: "Financeiro",
     reports: "Relatórios",
     settings: "Cadastro"
@@ -278,10 +342,10 @@ function App() {
     document.title = `IGS Lanchonete PRO - ${pageTitles[page]}`;
   }, [page]);
 
-  return <div className="app-shell">{error && <div className="toast">{error}</div>}<aside className="sidebar"><div className="brand"><div className="logo-mark small">TB</div><div><strong>IGS Lanchonete PRO</strong><span>{data?.user.name} - {data?.user.role}</span></div></div><nav>{nav.map(([key, label, Icon]) => <button key={key} className={page === key ? "active" : ""} onClick={() => setPage(key)}><Icon size={16} /> {label}</button>)}</nav><button className="ghost" onClick={logout}>Sair</button></aside><main className="content">{loading && <div className="loading-bar" />}<header className="topbar"><div><span>IGS Lanchonete PRO</span><h1>{pageTitles[page]}</h1></div><div className="topbar-actions"><button className="ghost" onClick={load}><Bell size={16} /> Atualizar</button><button onClick={() => setPage("orders")}><ClipboardList size={16} /> Novo pedido</button></div></header>{page === "dashboard" && <DashboardView data={data} money={money} />}{page === "orders" && <OrdersView data={data} money={money} orderType={orderType} setOrderType={setOrderType} orderTableId={orderTableId} setOrderTableId={setOrderTableId} orderCustomerId={orderCustomerId} setOrderCustomerId={setOrderCustomerId} orderNeighborhoodId={orderNeighborhoodId} setOrderNeighborhoodId={setOrderNeighborhoodId} orderWaiter={orderWaiter} setOrderWaiter={setOrderWaiter} orderNotes={orderNotes} setOrderNotes={setOrderNotes} orderDrafts={orderDrafts} setOrderDrafts={setOrderDrafts} totals={totals} createOrder={createOrder} mutate={mutate} />}{page === "tables" && <TablesView data={data} mutate={mutate} />}{page === "customers" && <CustomersView data={data} mutate={mutate} customerDraft={customerDraft} setCustomerDraft={setCustomerDraft} neighborhoodDraft={neighborhoodDraft} setNeighborhoodDraft={setNeighborhoodDraft} />}{page === "products" && <ProductsView data={data} mutate={mutate} productDraft={productDraft} setProductDraft={setProductDraft} />}{page === "finance" && <FinanceView data={data} money={money} mutate={mutate} openingCash={openingCash} setOpeningCash={setOpeningCash} closingCash={closingCash} setClosingCash={setClosingCash} />}{page === "reports" && <ReportsView token={token} />}{page === "settings" && <CadastroView data={data} money={money} companyDraft={companyDraft} setCompanyDraft={setCompanyDraft} mutate={mutate} />}</main></div>;
+  return <div className="app-shell">{error && <div className="toast">{error}</div>}<aside className="sidebar"><div className="brand"><div className="logo-mark small">TB</div><div><strong>IGS Lanchonete PRO</strong><span>{data?.user.name} - {data?.user.role}</span></div></div><nav>{nav.map(([key, label, Icon]) => <button key={key} className={page === key ? "active" : ""} onClick={() => setPage(key)}><Icon size={16} /> {label}</button>)}</nav><button className="ghost" onClick={logout}>Sair</button></aside><main className="content">{loading && <div className="loading-bar" />}<header className="topbar"><div><span>IGS Lanchonete PRO</span><h1>{pageTitles[page]}</h1></div><div className="topbar-actions"><button className="ghost" onClick={load}><Bell size={16} /> Atualizar</button><button onClick={() => setPage("orders")}><ClipboardList size={16} /> Novo pedido</button></div></header>{page === "dashboard" && <DashboardView data={data} money={money} mutate={mutate} />}{page === "orders" && <OrdersView data={data} money={money} orderType={orderType} setOrderType={setOrderType} orderTableId={orderTableId} setOrderTableId={setOrderTableId} orderCustomerId={orderCustomerId} setOrderCustomerId={setOrderCustomerId} orderNeighborhoodId={orderNeighborhoodId} setOrderNeighborhoodId={setOrderNeighborhoodId} orderWaiter={orderWaiter} setOrderWaiter={setOrderWaiter} orderNotes={orderNotes} setOrderNotes={setOrderNotes} orderDrafts={orderDrafts} setOrderDrafts={setOrderDrafts} totals={totals} createOrder={createOrder} mutate={mutate} />}{page === "tables" && <TablesView data={data} mutate={mutate} />}{page === "customers" && <CustomersView data={data} mutate={mutate} customerDraft={customerDraft} setCustomerDraft={setCustomerDraft} neighborhoodDraft={neighborhoodDraft} setNeighborhoodDraft={setNeighborhoodDraft} />}{page === "finance" && <FinanceView data={data} money={money} mutate={mutate} openingCash={openingCash} setOpeningCash={setOpeningCash} closingCash={closingCash} setClosingCash={setClosingCash} />}{page === "reports" && <ReportsView token={token} />}{page === "settings" && <CadastroView data={data} money={money} companyDraft={companyDraft} setCompanyDraft={setCompanyDraft} mutate={mutate} />}</main></div>;
 }
 
-function DashboardView({ data, money }: { data: AppData | null; money: (value: number) => string }) {
+function DashboardView({ data, money, mutate }: { data: AppData | null; money: (value: number) => string; mutate: (path: string, options?: RequestInit) => Promise<void>; }) {
   const dashboard = data?.dashboard;
   const metrics = [
     { label: "Total vendido hoje", value: money(dashboard?.totalSoldToday ?? 0), Icon: CircleDollarSign },
@@ -291,7 +355,51 @@ function DashboardView({ data, money }: { data: AppData | null; money: (value: n
     { label: "Contas vencidas", value: money(dashboard?.overduePayables ?? 0), Icon: Hammer },
     { label: "A receber", value: money(dashboard?.receivablesOpen ?? 0), Icon: Calculator }
   ];
-  return <div className="stack"> <section className="cards">{metrics.map((metric) => <article className="card metric" key={metric.label}><metric.Icon size={18} /><span>{metric.label}</span><strong>{metric.value}</strong></article>)}</section><section className="panel-grid"><div className="panel"><h3>Produtos mais vendidos</h3>{dashboard?.topProducts.map((item) => <div className="bar-row" key={item.name}><span>{item.name}</span><div><i style={{ width: `${Math.min(100, item.quantity * 12)}%` }} /><b>{item.quantity}</b></div></div>) ?? null}</div><div className="panel"><h3>Vendas por dia</h3>{dashboard?.salesByDay.map((item) => <div className="bar-row" key={item.day}><span>{item.day}</span><div><i className="accent" style={{ width: `${Math.min(100, item.amountCents / 1000)}%` }} /><b>{money(item.amountCents)}</b></div></div>) ?? null}</div></section></div>;
+
+  return (
+    <div className="stack">
+      <section className="cards">
+        {metrics.map((metric) => (
+          <article className="card metric" key={metric.label}>
+            <metric.Icon size={18} />
+            <span>{metric.label}</span>
+            <strong>{metric.value}</strong>
+          </article>
+        ))}
+      </section>
+
+      <section className="stack">
+        <ProductsModule data={data ? { products: data.products as any, categories: data.categories as any } : null} mutate={mutate} money={money} />
+      </section>
+
+      <section className="panel-grid">
+        <div className="panel">
+          <h3>Produtos mais vendidos</h3>
+          {dashboard?.topProducts.map((item) => (
+            <div className="bar-row" key={item.name}>
+              <span>{item.name}</span>
+              <div>
+                <i style={{ width: `${Math.min(100, item.quantity * 12)}%` }} />
+                <b>{item.quantity}</b>
+              </div>
+            </div>
+          )) ?? null}
+        </div>
+        <div className="panel">
+          <h3>Vendas por dia</h3>
+          {dashboard?.salesByDay.map((item) => (
+            <div className="bar-row" key={item.day}>
+              <span>{item.day}</span>
+              <div>
+                <i className="accent" style={{ width: `${Math.min(100, item.amountCents / 1000)}%` }} />
+                <b>{money(item.amountCents)}</b>
+              </div>
+            </div>
+          )) ?? null}
+        </div>
+      </section>
+    </div>
+  );
 }
 
 function OrdersView(props: { data: AppData | null; money: (value: number) => string; orderType: string; setOrderType: (value: string) => void; orderTableId: string; setOrderTableId: (value: string) => void; orderCustomerId: string; setOrderCustomerId: (value: string) => void; orderNeighborhoodId: string; setOrderNeighborhoodId: (value: string) => void; orderWaiter: string; setOrderWaiter: (value: string) => void; orderNotes: string; setOrderNotes: (value: string) => void; orderDrafts: ItemDraft[]; setOrderDrafts: React.Dispatch<React.SetStateAction<ItemDraft[]>>; totals: { subtotal: number; fees: number }; createOrder: () => Promise<void>; mutate: (path: string, options?: RequestInit) => Promise<void>; }) {
@@ -305,10 +413,6 @@ function TablesView({ data, mutate }: { data: AppData | null; mutate: (path: str
 
 function CustomersView({ data, mutate, customerDraft, setCustomerDraft, neighborhoodDraft, setNeighborhoodDraft }: { data: AppData | null; mutate: (path: string, options?: RequestInit) => Promise<void>; customerDraft: { name: string; phone: string; whatsapp: string; neighborhoodId: string; street: string; number: string; city: string; state: string; notes: string }; setCustomerDraft: React.Dispatch<React.SetStateAction<{ name: string; phone: string; whatsapp: string; neighborhoodId: string; street: string; number: string; city: string; state: string; notes: string }>>; neighborhoodDraft: { name: string; city: string; deliveryFeeCents: number; avgDeliveryMinutes: number; active: boolean }; setNeighborhoodDraft: React.Dispatch<React.SetStateAction<{ name: string; city: string; deliveryFeeCents: number; avgDeliveryMinutes: number; active: boolean }>>; }) {
   return <div className="panel-grid"><section className="panel"><h3>Novo cliente</h3><div className="grid-2"><label>Nome<input value={customerDraft.name} onChange={(e) => setCustomerDraft((state) => ({ ...state, name: e.target.value }))} /></label><label>Telefone<input value={customerDraft.phone} onChange={(e) => setCustomerDraft((state) => ({ ...state, phone: e.target.value }))} /></label><label>WhatsApp<input value={customerDraft.whatsapp} onChange={(e) => setCustomerDraft((state) => ({ ...state, whatsapp: e.target.value }))} /></label><label>Bairro<select value={customerDraft.neighborhoodId} onChange={(e) => setCustomerDraft((state) => ({ ...state, neighborhoodId: e.target.value }))}><option value="">Sem bairro</option>{data?.neighborhoods.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>Rua<input value={customerDraft.street} onChange={(e) => setCustomerDraft((state) => ({ ...state, street: e.target.value }))} /></label><label>Número<input value={customerDraft.number} onChange={(e) => setCustomerDraft((state) => ({ ...state, number: e.target.value }))} /></label><label>Cidade<input value={customerDraft.city} onChange={(e) => setCustomerDraft((state) => ({ ...state, city: e.target.value }))} /></label><label>UF<input value={customerDraft.state} onChange={(e) => setCustomerDraft((state) => ({ ...state, state: e.target.value }))} /></label></div><label>Observações<textarea rows={3} value={customerDraft.notes} onChange={(e) => setCustomerDraft((state) => ({ ...state, notes: e.target.value }))} /></label><button onClick={() => mutate("/api/customers", { method: "POST", body: JSON.stringify(customerDraft) })}>Salvar cliente</button></section><section className="panel"><h3>Bairros e taxa de entrega</h3><div className="grid-2"><label>Nome<input value={neighborhoodDraft.name} onChange={(e) => setNeighborhoodDraft((state) => ({ ...state, name: e.target.value }))} /></label><label>Cidade<input value={neighborhoodDraft.city} onChange={(e) => setNeighborhoodDraft((state) => ({ ...state, city: e.target.value }))} /></label><label>Taxa<input type="number" value={neighborhoodDraft.deliveryFeeCents} onChange={(e) => setNeighborhoodDraft((state) => ({ ...state, deliveryFeeCents: Number(e.target.value) }))} /></label><label>Tempo medio<input type="number" value={neighborhoodDraft.avgDeliveryMinutes} onChange={(e) => setNeighborhoodDraft((state) => ({ ...state, avgDeliveryMinutes: Number(e.target.value) }))} /></label></div><button onClick={() => mutate("/api/neighborhoods", { method: "POST", body: JSON.stringify(neighborhoodDraft) })}>Salvar bairro</button></section><section className="panel"><h3>Clientes cadastrados</h3><div className="table-list">{data?.customers.map((item) => <div className="list-row" key={item.id}><strong>{item.name}</strong><span>{item.phone}</span><span>{item.neighborhood?.name ?? "-"}</span></div>)}</div></section></div>;
-}
-
-function ProductsView({ data, mutate, productDraft, setProductDraft }: { data: AppData | null; mutate: (path: string, options?: RequestInit) => Promise<void>; productDraft: { name: string; salePriceCents: number; costCents: number; stockCurrent: number; categoryId: string; controlStock: boolean; onlineMenu: boolean; printTarget: string; active: boolean }; setProductDraft: React.Dispatch<React.SetStateAction<{ name: string; salePriceCents: number; costCents: number; stockCurrent: number; categoryId: string; controlStock: boolean; onlineMenu: boolean; printTarget: string; active: boolean }>>; }) {
-  return <div className="panel-grid"><section className="panel"><h3>Novo produto</h3><div className="grid-2"><label>Nome<input value={productDraft.name} onChange={(e) => setProductDraft((state) => ({ ...state, name: e.target.value }))} /></label><label>Categoria<select value={productDraft.categoryId} onChange={(e) => setProductDraft((state) => ({ ...state, categoryId: e.target.value }))}><option value="">Selecione</option>{data?.categories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>Venda<input type="number" value={productDraft.salePriceCents} onChange={(e) => setProductDraft((state) => ({ ...state, salePriceCents: Number(e.target.value) }))} /></label><label>Custo<input type="number" value={productDraft.costCents} onChange={(e) => setProductDraft((state) => ({ ...state, costCents: Number(e.target.value) }))} /></label><label>Estoque<input type="number" value={productDraft.stockCurrent} onChange={(e) => setProductDraft((state) => ({ ...state, stockCurrent: Number(e.target.value) }))} /></label><label>Impressao<select value={productDraft.printTarget} onChange={(e) => setProductDraft((state) => ({ ...state, printTarget: e.target.value }))}><option>COZINHA</option><option>BAR</option><option>CAIXA</option></select></label></div><button onClick={() => mutate("/api/products", { method: "POST", body: JSON.stringify(productDraft) })}>Salvar produto</button></section><section className="panel"><h3>Produtos</h3><div className="table-list">{data?.products.map((item) => <div className="list-row" key={item.id}><strong>{item.code} - {item.name}</strong><span>{money(item.salePriceCents)}</span><span>{item.printTarget}</span><span>{item.stockCurrent}</span></div>)}</div></section></div>;
 }
 
 function FinanceView({ data, money, mutate, openingCash, setOpeningCash, closingCash, setClosingCash }: { data: AppData | null; money: (value: number) => string; mutate: (path: string, options?: RequestInit) => Promise<void>; openingCash: string; setOpeningCash: React.Dispatch<React.SetStateAction<string>>; closingCash: string; setClosingCash: React.Dispatch<React.SetStateAction<string>>; }) {
@@ -352,7 +456,7 @@ function ReportsView({ token }: { token: string | null }) {
   return <section className="panel"><h3>Relatórios</h3><div className="report-grid">{reports.map(([report, label]) => <article className="report-card" key={report}><strong>{label}</strong><div className="row-actions wrap"><button className="ghost" disabled={!token} onClick={() => token && void downloadReport(token, report, "csv")}>CSV</button><button className="ghost" disabled={!token} onClick={() => token && void downloadReport(token, report, "xlsx")}>Planilha</button><button className="ghost" disabled={!token} onClick={() => token && void downloadReport(token, report, "pdf")}>PDF</button></div></article>)}</div></section>;
 }
 
-function SettingsView({ data, money, companyDraft, setCompanyDraft, mutate }: { data: AppData | null; money: (value: number) => string; companyDraft: { razaoSocial: string; nomeFantasia: string; onlineMenuSlug: string; serviceFeeEnabled: boolean; serviceFeePercent: number; openingHours: string; printerKitchenIp: string; printerBarIp: string; printerCashIp: string; printerPort: number; theme: string }; setCompanyDraft: React.Dispatch<React.SetStateAction<{ razaoSocial: string; nomeFantasia: string; onlineMenuSlug: string; serviceFeeEnabled: boolean; serviceFeePercent: number; openingHours: string; printerKitchenIp: string; printerBarIp: string; printerCashIp: string; printerPort: number; theme: string }>>; mutate: (path: string, options?: RequestInit) => Promise<void>; }) {
+function SettingsView({ data, money, companyDraft, setCompanyDraft, mutate }: { data: AppData | null; money: (value: number) => string; companyDraft: { razaoSocial: string; nomeFantasia: string; logoUrl: string; onlineMenuSlug: string; serviceFeeEnabled: boolean; serviceFeePercent: number; openingHours: string; printerKitchenIp: string; printerBarIp: string; printerCashIp: string; printerPort: number; theme: string }; setCompanyDraft: React.Dispatch<React.SetStateAction<{ razaoSocial: string; nomeFantasia: string; logoUrl: string; onlineMenuSlug: string; serviceFeeEnabled: boolean; serviceFeePercent: number; openingHours: string; printerKitchenIp: string; printerBarIp: string; printerCashIp: string; printerPort: number; theme: string }>>; mutate: (path: string, options?: RequestInit) => Promise<void>; }) {
   return <div className="panel-grid"><section className="panel"><h3>Empresa</h3><div className="grid-2"><label>Razão social<input value={companyDraft.razaoSocial} onChange={(e) => setCompanyDraft((state) => ({ ...state, razaoSocial: e.target.value }))} /></label><label>Nome fantasia<input value={companyDraft.nomeFantasia} onChange={(e) => setCompanyDraft((state) => ({ ...state, nomeFantasia: e.target.value }))} /></label><label>Link do cardápio<input value={companyDraft.onlineMenuSlug} onChange={(e) => setCompanyDraft((state) => ({ ...state, onlineMenuSlug: e.target.value }))} /></label><label>Horário<input value={companyDraft.openingHours} onChange={(e) => setCompanyDraft((state) => ({ ...state, openingHours: e.target.value }))} /></label><label>IP cozinha<input value={companyDraft.printerKitchenIp} onChange={(e) => setCompanyDraft((state) => ({ ...state, printerKitchenIp: e.target.value }))} /></label><label>IP bar<input value={companyDraft.printerBarIp} onChange={(e) => setCompanyDraft((state) => ({ ...state, printerBarIp: e.target.value }))} /></label><label>IP caixa<input value={companyDraft.printerCashIp} onChange={(e) => setCompanyDraft((state) => ({ ...state, printerCashIp: e.target.value }))} /></label><label>Porta<input type="number" value={companyDraft.printerPort} onChange={(e) => setCompanyDraft((state) => ({ ...state, printerPort: Number(e.target.value) }))} /></label><label>Taxa de serviço<input type="number" value={companyDraft.serviceFeePercent} onChange={(e) => setCompanyDraft((state) => ({ ...state, serviceFeePercent: Number(e.target.value) }))} /></label></div><label><input type="checkbox" checked={companyDraft.serviceFeeEnabled} onChange={(e) => setCompanyDraft((state) => ({ ...state, serviceFeeEnabled: e.target.checked }))} /> Habilitar taxa de serviço</label><button onClick={() => mutate("/api/company", { method: "PUT", body: JSON.stringify(companyDraft) })}>Salvar configurações</button></section><section className="panel"><h3>Impressoras</h3><div className="table-list">{data?.printers.map((item) => <div className="list-row" key={item.id}><strong>{item.name}</strong><span>{item.type}</span><span>{item.ip}:{item.port}</span><button className="ghost" onClick={() => mutate(`/api/printers/${item.id}/test`, { method: "POST" })}>Testar</button></div>)}</div></section></div>;
 }
 

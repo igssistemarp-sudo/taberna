@@ -512,10 +512,90 @@ app.post("/api/categories", requireRole("ADMIN", "GERENTE", "CAIXA"), async (req
 app.put("/api/categories/:id", requireRole("ADMIN", "GERENTE", "CAIXA"), async (req: AuthedRequest, res, next) => { try { const body = z.object({ name: z.string().min(2).optional(), active: z.boolean().optional() }).parse(req.body); res.json(await prisma.productCategory.update({ where: { id: asString(req.params.id) }, data: body })); } catch (error) { next(error); } });
 app.delete("/api/categories/:id", requireRole("ADMIN", "GERENTE"), async (req: AuthedRequest, res, next) => { try { await prisma.productCategory.delete({ where: { id: asString(req.params.id) } }); res.status(204).end(); } catch (error) { next(error); } });
 
-app.get("/api/products", async (_req, res) => res.json(await prisma.product.findMany({ include: { category: true }, orderBy: { code: "asc" } })));
-app.post("/api/products", requireRole("ADMIN", "GERENTE", "CAIXA"), async (req: AuthedRequest, res, next) => { try { const body = z.object({ code: z.number().int().optional(), barcode: optionalText, name: z.string().min(2), categoryId: optionalText, description: optionalText, salePriceCents: z.number().int().default(0), costCents: z.number().int().default(0), stockCurrent: z.number().int().default(0), controlStock: z.boolean().default(false), onlineMenu: z.boolean().default(false), printTarget: z.enum(["COZINHA", "BAR", "CAIXA"]).default("COZINHA"), lowStockThreshold: z.number().int().default(5), photoUrl: optionalText, active: z.boolean().default(true) }).parse(req.body); const last = await prisma.product.findFirst({ orderBy: { code: "desc" } }); const created = await prisma.product.create({ data: { ...body, code: body.code ?? (last?.code ?? 0) + 1 } }); res.status(201).json(created); } catch (error) { next(error); } });
-app.put("/api/products/:id", requireRole("ADMIN", "GERENTE", "CAIXA"), async (req: AuthedRequest, res, next) => { try { const body = z.object({ code: z.number().int().optional(), barcode: optionalText, name: z.string().min(2).optional(), categoryId: optionalText, description: optionalText, salePriceCents: z.number().int().optional(), costCents: z.number().int().optional(), stockCurrent: z.number().int().optional(), controlStock: z.boolean().optional(), onlineMenu: z.boolean().optional(), printTarget: z.enum(["COZINHA", "BAR", "CAIXA"]).optional(), lowStockThreshold: z.number().int().optional(), photoUrl: optionalText, active: z.boolean().optional() }).parse(req.body); res.json(await prisma.product.update({ where: { id: asString(req.params.id) }, data: body })); } catch (error) { next(error); } });
+const productSchema = z.object({
+  code: z.number().int().optional(), barcode: optionalText, internalCode: optionalText,
+  name: z.string().min(2), shortDescription: optionalText, fullDescription: optionalText,
+  categoryId: optionalText, subcategory: optionalText, description: optionalText,
+  salePriceCents: z.number().int().default(0), costCents: z.number().int().default(0),
+  marginPercent: z.number().default(0), profitCents: z.number().int().default(0),
+  promoPriceCents: z.number().int().nullable().optional(),
+  promoStart: z.string().nullable().optional(), promoEnd: z.string().nullable().optional(),
+  stockCurrent: z.number().int().default(0), stockMin: z.number().int().default(0),
+  stockMax: z.number().int().default(0), stockUnit: z.string().default("UN"),
+  controlStock: z.boolean().default(false), onlineMenu: z.boolean().default(false),
+  availableDelivery: z.boolean().default(true), availableBalcao: z.boolean().default(true),
+  availableMesas: z.boolean().default(true), featured: z.boolean().default(false),
+  printTarget: z.string().default("COZINHA"), prepTimeMinutes: z.number().int().default(0),
+  lowStockThreshold: z.number().int().default(5), photoUrl: optionalText,
+  nutritionWeight: optionalText, nutritionCalories: optionalText,
+  containsGluten: z.boolean().default(false), containsLactose: z.boolean().default(false),
+  isVegan: z.boolean().default(false), isVegetarian: z.boolean().default(false),
+  observations: optionalText, active: z.boolean().default(true)
+});
+
+const productUpdateSchema = productSchema.partial();
+
+app.get("/api/products", async (_req, res) => res.json(await prisma.product.findMany({ include: { category: true, photos: { orderBy: { sortOrder: "asc" } }, recipeIngredients: true, comboItems: { include: { child: true } }, productAdditions: { include: { addition: true } } }, orderBy: { code: "asc" } })));
+
+app.get("/api/products/:id", async (req, res, next) => {
+  try { const item = await prisma.product.findUnique({ where: { id: asString(req.params.id) }, include: { category: true, photos: { orderBy: { sortOrder: "asc" } }, recipeIngredients: true, comboItems: { include: { child: true } }, productAdditions: { include: { addition: true } } } }); res.json(item); }
+  catch (error) { next(error); }
+});
+
+app.post("/api/products", requireRole("ADMIN", "GERENTE", "CAIXA"), async (req: AuthedRequest, res, next) => {
+  try { const body = productSchema.parse(req.body); const last = await prisma.product.findFirst({ orderBy: { code: "desc" } }); const created = await prisma.product.create({ data: { ...body, code: body.code ?? (last?.code ?? 0) + 1, promoStart: body.promoStart ? new Date(body.promoStart) : null, promoEnd: body.promoEnd ? new Date(body.promoEnd) : null } }); await audit(req.user?.id, "CREATE", "product", created.id, body); res.status(201).json(created); }
+  catch (error) { next(error); }
+});
+
+app.put("/api/products/:id", requireRole("ADMIN", "GERENTE", "CAIXA"), async (req: AuthedRequest, res, next) => {
+  try { const old = await prisma.product.findUnique({ where: { id: asString(req.params.id) } }); const body = productUpdateSchema.parse(req.body); const data = { ...body, promoStart: body.promoStart !== undefined ? (body.promoStart ? new Date(body.promoStart) : null) : undefined, promoEnd: body.promoEnd !== undefined ? (body.promoEnd ? new Date(body.promoEnd) : null) : undefined }; const updated = await prisma.product.update({ where: { id: asString(req.params.id) }, data }); if (old && (old.salePriceCents !== updated.salePriceCents || old.costCents !== updated.costCents)) { await prisma.productPriceLog.create({ data: { productId: updated.id, userId: req.user?.id, oldPriceCents: old.salePriceCents, newPriceCents: updated.salePriceCents, oldCostCents: old.costCents, newCostCents: updated.costCents } }); } await audit(req.user?.id, "UPDATE", "product", updated.id, body); res.json(updated); }
+  catch (error) { next(error); }
+});
+
 app.delete("/api/products/:id", requireRole("ADMIN", "GERENTE"), async (req: AuthedRequest, res, next) => { try { await prisma.product.delete({ where: { id: asString(req.params.id) } }); res.status(204).end(); } catch (error) { next(error); } });
+
+// Product photos
+app.post("/api/products/:id/photos", requireRole("ADMIN", "GERENTE"), async (req: AuthedRequest, res, next) => {
+  try { const body = z.object({ url: z.string(), sortOrder: z.number().int().default(0) }).parse(req.body); const created = await prisma.productPhoto.create({ data: { productId: asString(req.params.id), url: body.url, sortOrder: body.sortOrder } }); res.status(201).json(created); }
+  catch (error) { next(error); }
+});
+
+app.delete("/api/products/photos/:id", requireRole("ADMIN", "GERENTE"), async (req: AuthedRequest, res, next) => { try { await prisma.productPhoto.delete({ where: { id: asString(req.params.id) } }); res.status(204).end(); } catch (error) { next(error); } });
+
+// Recipe ingredients
+app.post("/api/products/:id/ingredients", requireRole("ADMIN", "GERENTE"), async (req: AuthedRequest, res, next) => {
+  try { const body = z.object({ name: z.string(), quantity: z.number().default(1), unit: z.string().default("UN") }).parse(req.body); const created = await prisma.recipeIngredient.create({ data: { ...body, productId: asString(req.params.id) } }); res.status(201).json(created); }
+  catch (error) { next(error); }
+});
+
+app.put("/api/products/ingredients/:id", requireRole("ADMIN", "GERENTE"), async (req: AuthedRequest, res, next) => {
+  try { const body = z.object({ name: z.string().optional(), quantity: z.number().optional(), unit: z.string().optional() }).parse(req.body); res.json(await prisma.recipeIngredient.update({ where: { id: asString(req.params.id) }, data: body })); }
+  catch (error) { next(error); }
+});
+
+app.delete("/api/products/ingredients/:id", requireRole("ADMIN", "GERENTE"), async (req: AuthedRequest, res, next) => { try { await prisma.recipeIngredient.delete({ where: { id: asString(req.params.id) } }); res.status(204).end(); } catch (error) { next(error); } });
+
+// Combo items
+app.post("/api/products/:id/combos", requireRole("ADMIN", "GERENTE"), async (req: AuthedRequest, res, next) => {
+  try { const body = z.object({ productId: z.string(), quantity: z.number().int().default(1), overridePrice: z.number().int().nullable().optional() }).parse(req.body); const created = await prisma.comboItem.create({ data: { childId: body.productId, comboId: asString(req.params.id), quantity: body.quantity, overridePrice: body.overridePrice } }); res.status(201).json(created); }
+  catch (error) { next(error); }
+});
+
+app.delete("/api/products/combos/:id", requireRole("ADMIN", "GERENTE"), async (req: AuthedRequest, res, next) => { try { await prisma.comboItem.delete({ where: { id: asString(req.params.id) } }); res.status(204).end(); } catch (error) { next(error); } });
+
+// Product additions mapping
+app.post("/api/products/:id/additions", requireRole("ADMIN", "GERENTE"), async (req: AuthedRequest, res, next) => {
+  try { const body = z.object({ additionId: z.string(), maxQty: z.number().int().default(1) }).parse(req.body); const created = await prisma.productAddition.create({ data: { ...body, productId: asString(req.params.id) } }); res.status(201).json(created); }
+  catch (error) { next(error); }
+});
+
+app.delete("/api/products/additions/:id", requireRole("ADMIN", "GERENTE"), async (req: AuthedRequest, res, next) => { try { await prisma.productAddition.delete({ where: { id: asString(req.params.id) } }); res.status(204).end(); } catch (error) { next(error); } });
+
+// Price history
+app.get("/api/products/:id/price-log", async (req, res, next) => {
+  try { res.json(await prisma.productPriceLog.findMany({ where: { productId: asString(req.params.id) }, orderBy: { createdAt: "desc" }, take: 50 })); }
+  catch (error) { next(error); }
+});
 
 app.get("/api/additions", async (_req, res) => res.json(await prisma.additional.findMany({ orderBy: { name: "asc" } })));
 app.post("/api/additions", requireRole("ADMIN", "GERENTE", "CAIXA"), async (req: AuthedRequest, res, next) => { try { const body = z.object({ name: z.string().min(2), valueCents: z.number().int().default(0), charge: z.boolean().default(true), category: optionalText, active: z.boolean().default(true) }).parse(req.body); res.status(201).json(await prisma.additional.create({ data: body })); } catch (error) { next(error); } });

@@ -154,6 +154,7 @@ model Customer {
 model ProductCategory {
   id        String   @id @default(cuid())
   name      String   @unique
+  sortOrder Int      @default(0)
   active    Boolean  @default(true)
   products  Product[]
   createdAt DateTime @default(now())
@@ -163,24 +164,105 @@ model ProductCategory {
 model Product {
   id                 String   @id @default(cuid())
   code               Int      @unique
+  internalCode       String?
   barcode            String?
   name               String
+  shortDescription   String?
+  fullDescription    String?
   categoryId         String?
   category           ProductCategory? @relation(fields: [categoryId], references: [id])
+  subcategory        String?
   description        String?
   salePriceCents     Int      @default(0)
   costCents          Int      @default(0)
+  marginPercent      Float    @default(0)
+  profitCents        Int      @default(0)
+  promoPriceCents    Int?
+  promoStart         DateTime?
+  promoEnd           DateTime?
   stockCurrent       Int      @default(0)
+  stockMin           Int      @default(0)
+  stockMax           Int      @default(0)
+  stockUnit          String   @default("UN")
   controlStock       Boolean  @default(false)
   onlineMenu         Boolean  @default(false)
-  printTarget        PrinterType @default(COZINHA)
+  availableDelivery  Boolean  @default(true)
+  availableBalcao    Boolean  @default(true)
+  availableMesas     Boolean  @default(true)
+  featured           Boolean  @default(false)
+  printTarget        String   @default("COZINHA")
+  prepTimeMinutes    Int      @default(0)
   lowStockThreshold  Int      @default(5)
   photoUrl           String?
+  nutritionWeight    String?
+  nutritionCalories  String?
+  containsGluten     Boolean  @default(false)
+  containsLactose    Boolean  @default(false)
+  isVegan            Boolean  @default(false)
+  isVegetarian       Boolean  @default(false)
+  observations       String?
   active             Boolean  @default(true)
   items              OrderItem[]
   stockMovements     StockMovement[]
+  photos             ProductPhoto[]
+  recipeIngredients  RecipeIngredient[]
+  comboItems         ComboItem[]      @relation("ComboParent")
+  comboChildren      ComboItem[]      @relation("ComboChild")
+  productAdditions   ProductAddition[]
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
+}
+
+model ProductPhoto {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  sortOrder Int     @default(0)
+  createdAt DateTime @default(now())
+}
+
+model RecipeIngredient {
+  id         String  @id @default(cuid())
+  productId  String
+  product    Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name       String
+  quantity   Float   @default(1)
+  unit       String  @default("UN")
+  createdAt  DateTime @default(now())
+}
+
+model ComboItem {
+  id            String  @id @default(cuid())
+  comboId       String
+  combo         Product @relation("ComboParent", fields: [comboId], references: [id], onDelete: Cascade)
+  childId       String
+  child         Product @relation("ComboChild", fields: [childId], references: [id])
+  quantity      Int     @default(1)
+  overridePrice Int?
+  createdAt     DateTime @default(now())
+}
+
+model ProductAddition {
+  id           String     @id @default(cuid())
+  productId    String
+  product      Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  additionId   String
+  addition     Additional @relation(fields: [additionId], references: [id])
+  maxQty       Int        @default(1)
+  createdAt    DateTime   @default(now())
+  @@unique([productId, additionId])
+}
+
+model ProductPriceLog {
+  id            String   @id @default(cuid())
+  productId     String
+  userId        String?
+  oldPriceCents Int?
+  newPriceCents Int?
+  oldCostCents  Int?
+  newCostCents  Int?
+  createdAt     DateTime @default(now())
 }
 
 model Additional {
@@ -191,6 +273,7 @@ model Additional {
   category   String?
   active     Boolean  @default(true)
   items      OrderItemAdditional[]
+  productAdditions ProductAddition[]
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }
