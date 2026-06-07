@@ -456,7 +456,7 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
               </div>
               <strong style={{ display: "block", fontSize: 15 }}>{table.name}</strong>
               <span style={{ fontSize: 12, color: color, fontWeight: 700 }}>{statusLabel[table.status] ?? table.status}</span>
-              {table.customerName && <small style={{ display: "block", color: "var(--accent)", marginTop: 4, fontWeight: 600 }}>{table.customerName}</small>}
+              <small style={{ display: "block", color: "var(--accent)", marginTop: 4, fontWeight: 600, minHeight: 16, fontSize: 12 }}>{table.customerName ?? ""}</small>
             </div>
           );
         })}
