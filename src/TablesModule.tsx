@@ -76,6 +76,8 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
   const [cancelItemId, setCancelItemId] = React.useState<string | null>(null);
   const [showCancelTable, setShowCancelTable] = React.useState(false);
   const [showOpenDialog, setShowOpenDialog] = React.useState(false);
+  const [showPrintDialog, setShowPrintDialog] = React.useState(false);
+  const [paidOrderId, setPaidOrderId] = React.useState<string | null>(null);
 
   React.useEffect(() => { if (initialData) setTables(initialData.tables); }, [initialData]);
 
@@ -145,6 +147,17 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
       if (paymentTotal < total) return setError("Total dos pagamentos é menor que o valor da conta.");
       const isAPrazo = payments.some((p) => p.method.name.toUpperCase().includes("PRAZO"));
       await api(`/api/orders/${orderId}/pay`, { method: "POST", body: JSON.stringify({ customerId: selectedCustomer?.id, payments: payments.map((p) => ({ paymentMethodId: p.method.id, methodNameSnapshot: p.method.name, amountCents: p.amountCents, changeCents: p.changeCents })), generateReceivable: isAPrazo, receivableDueDate: isAPrazo ? receivableDueDate : undefined }) });
+      setPaidOrderId(orderId);
+      setShowPrintDialog(true);
+    } catch (e: any) { setError(e.message); } finally { setLoading(false); }
+  }
+
+  async function finishPayment(doPrint: boolean) {
+    if (!paidOrderId) return;
+    setShowPrintDialog(false);
+    setLoading(true);
+    try {
+      if (doPrint) await api(`/api/orders/${paidOrderId}/reprint`, { method: "POST" }).catch(() => {});
       await reload("/api/company", {});
       const updated = await api("/api/tables");
       setTables(updated);
@@ -155,6 +168,7 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
       setDiscountCents(0);
       setDiscountPercent(0);
       setSelectedCustomer(null);
+      setPaidOrderId(null);
     } catch (e: any) { setError(e.message); } finally { setLoading(false); }
   }
 
@@ -245,6 +259,7 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
             <button onClick={() => setShowCancelTable(true)} style={{ background: "linear-gradient(135deg, #ef4444, #dc2626)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(239,68,68,0.3)" }}><Trash2 size={15} /> Cancelar Mesa</button>
             <button onClick={() => { setTransferTarget(""); setTransferItemIds([]); setShowTransfer(true); }} style={{ background: "linear-gradient(135deg, #f59e0b, #d97706)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(245,158,11,0.3)" }}><ArrowLeftRight size={15} /> Transferir</button>
             <button onClick={() => { setMergeSources([]); setShowMergeModal(true); }} style={{ background: "linear-gradient(135deg, #8b5cf6, #7c3aed)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(139,92,246,0.3)" }}><Merge size={15} /> Juntar</button>
+            <button onClick={() => { api(`/api/orders/${orders[0]?.id}/reprint`, { method: "POST" }).catch(() => {}); }} style={{ background: "linear-gradient(135deg, #06b6d4, #0891b2)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(6,182,212,0.3)" }}><Printer size={15} /> Imprimir</button>
             <button onClick={() => setView("payment")} style={{ background: "linear-gradient(135deg, #10b981, #059669)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(16,185,129,0.3)" }}><DollarSign size={15} /> Pagamento</button>
             <button onClick={() => { setView("grid"); setSelectedTable(null); setOrders([]); }} style={{ background: "linear-gradient(135deg, #64748b, #475569)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(100,116,139,0.3)" }}><ChevronLeft size={15} /> Voltar</button>
           </div>
@@ -443,7 +458,7 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
             </div>
 
             <div className="grid-2" style={{ marginTop: 12 }}>
-              <label>Desconto R$<input type="number" value={discountCents} onChange={(e) => setDiscountCents(Number(e.target.value))} /></label>
+              <label>Desconto R$<input type="number" step="0.01" value={discountCents / 100} onChange={(e) => setDiscountCents(Math.round(Number(e.target.value) * 100))} /></label>
               <label>Desconto %<input type="number" value={discountPercent} onChange={(e) => setDiscountPercent(Number(e.target.value))} /></label>
             </div>
           </section>
@@ -460,16 +475,27 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
                       {existing ? (
                         <button className="ghost danger" onClick={() => setPayments(payments.filter((p) => p.method.id !== pm.id))}><X size={14} /></button>
                       ) : (
-                        <button onClick={() => setPayments([...payments, { method: pm, amountCents: 0, receivedCents: 0, changeCents: 0 }])}>Adicionar</button>
+                        <button onClick={() => setPayments([...payments, { method: pm, amountCents: remaining > 0 ? remaining : 0, receivedCents: 0, changeCents: 0 }])}>Adicionar</button>
                       )}
                     </div>
                     {existing && (
                       <div className="grid-2" style={{ marginTop: 6 }}>
-                        <label>Valor<input type="number" value={existing.amountCents} onChange={(e) => setPayments(payments.map((p) => p.method.id === pm.id ? { ...p, amountCents: Number(e.target.value) } : p))} /></label>
+                        <label>{pm.name === "Dinheiro" ? "Recebido R$" : "Valor R$"}<input type="number" step="0.01" value={existing.amountCents / 100} onChange={(e) => setPayments(payments.map((p) => p.method.id === pm.id ? { ...p, amountCents: Math.round(Number(e.target.value) * 100) } : p))} autoFocus={existing.amountCents === 0} style={{ fontWeight: 700 }} /></label>
+                        {pm.name !== "Dinheiro" ? <button onClick={() => setPayments(payments.map((p) => p.method.id === pm.id ? { ...p, amountCents: remaining > 0 ? p.amountCents + remaining : p.amountCents } : p))} disabled={remaining <= 0} style={{ fontSize: 12, padding: "4px 10px", alignSelf: "flex-end", marginBottom: 2 }}>Completar R$ {money(remaining)}</button> : <div />}
                         {pm.name === "Dinheiro" && (
                           <>
-                            <label>Recebido<input type="number" value={existing.receivedCents} onChange={(e) => { const rec = Number(e.target.value); setPayments(payments.map((p) => p.method.id === pm.id ? { ...p, receivedCents: rec, changeCents: Math.max(0, rec - p.amountCents) } : p)); }} /></label>
-                            {existing.changeCents > 0 && <small style={{ color: "var(--accent)", gridColumn: "span 2" }}>Troco: {money(existing.changeCents)}</small>}
+                            <div style={{ gridColumn: "span 2" }}>
+                              {(() => {
+                                const paidOthers = payments.filter((p) => p.method.id !== pm.id).reduce((s, p) => s + p.amountCents, 0);
+                                const needFromCash = Math.max(0, totalFinal - paidOthers);
+                                const troco = Math.max(0, existing.amountCents - needFromCash);
+                                return (
+                                  <div>
+                                    {troco > 0 ? <small style={{ display: "block", color: "#059669", fontWeight: 700, background: "#d1fae5", padding: "4px 10px", borderRadius: 8, textAlign: "center", marginBottom: 4 }}>Troco: {money(troco)}</small> : null}
+                                  </div>
+                                );
+                              })()}
+                            </div>
                           </>
                         )}
                       </div>
@@ -486,13 +512,72 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
               </div>
             )}
 
-            <div style={{ marginTop: 16, textAlign: "right" }}>
+            <div className="row-actions" style={{ marginTop: 16 }}>
+              <button onClick={() => setView("order")} className="ghost"><ChevronLeft size={16} /> Voltar</button>
               <button disabled={paidTotal < totalFinal || (isAPrazo && !selectedCustomer)} onClick={payOrder} style={{ fontSize: 16, padding: "14px 24px" }}>
                 <DollarSign size={18} /> Finalizar - {money(totalFinal)}
               </button>
             </div>
           </section>
         </div>
+
+        {showPrintDialog && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "grid", placeItems: "center", zIndex: 999, backdropFilter: "blur(4px)" }} onClick={() => {}}>
+            <div style={{ background: "#fff", borderRadius: 20, width: 360, maxWidth: "92vw", maxHeight: "90vh", overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,0.25)", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
+              <div style={{ padding: "20px 24px", textAlign: "center", borderBottom: "1px solid #e2e8f0" }}>
+                <Printer size={28} style={{ color: "#2563eb", marginBottom: 4 }} />
+                <h3 style={{ margin: 0, fontSize: 16 }}>Comprovante de Venda</h3>
+              </div>
+              <div style={{ flex: 1, overflow: "auto", padding: "16px 24px", fontFamily: "'Courier New', monospace", fontSize: 12, lineHeight: 1.5, background: "#fafafa", color: "#1e293b" }}>
+                <div style={{ textAlign: "center", marginBottom: 12 }}>
+                  <strong style={{ fontSize: 14 }}>{initialData?.company?.nomeFantasia ?? "Lanchonete"}</strong>
+                </div>
+                <div style={{ borderTop: "1px dashed #94a3b8", borderBottom: "1px dashed #94a3b8", padding: "8px 0", marginBottom: 8 }}>
+                  <div>Pedido #{orders[0]?.number}</div>
+                  <div>Mesa: {selectedTable?.name}</div>
+                  {selectedTable?.customerName && <div>Cliente: {selectedTable.customerName}</div>}
+                  <div>{new Date().toLocaleString("pt-BR")}</div>
+                </div>
+                <div style={{ marginBottom: 8 }}>
+                  {orders[0]?.items?.filter((i: any) => !i.cancelledAt).map((item: any, idx: number) => (
+                    <div key={idx} style={{ marginBottom: 4 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between" }}>
+                        <span>{item.quantity}x {item.nameSnapshot}</span>
+                        <span>{money(item.totalCents)}</span>
+                      </div>
+                      {item.note && <div style={{ color: "#b45309", fontSize: 11 }}>  Obs: {item.note}</div>}
+                      {item.additives?.map((add: any, ai: number) => (
+                        <div key={ai} style={{ color: "#64748b", fontSize: 11 }}>  + {add.quantity}x {add.nameSnapshot} {money(add.totalCents)}</div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+                <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 8, marginBottom: 8 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}><span>Subtotal</span><span>{money(subtotal)}</span></div>
+                  {discVal > 0 && <div style={{ display: "flex", justifyContent: "space-between", color: "#ef4444" }}><span>Desconto</span><span>-{money(discVal)}</span></div>}
+                  <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, fontSize: 14 }}><span>TOTAL</span><span>{money(totalFinal)}</span></div>
+                </div>
+                <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 8 }}>
+                  {payments.filter((p) => p.amountCents > 0).map((p, idx) => (
+                    <div key={idx} style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>{p.method.name}</span><span>{money(p.amountCents)}</span>
+                    </div>
+                  ))}
+                  {payments.filter((p) => p.changeCents > 0).map((p, idx) => (
+                    <div key={idx} style={{ display: "flex", justifyContent: "space-between", color: "#059669" }}>
+                      <span>Troco ({p.method.name})</span><span>{money(p.changeCents)}</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ textAlign: "center", marginTop: 12, color: "#94a3b8", fontSize: 10 }}>Obrigado pela preferência!</div>
+              </div>
+              <div style={{ padding: "16px 24px", borderTop: "1px solid #e2e8f0", display: "flex", gap: 10, justifyContent: "center" }}>
+                <button onClick={() => finishPayment(false)} className="ghost" style={{ borderRadius: 12, padding: "10px 20px", fontSize: 14 }}>Pular</button>
+                <button onClick={() => finishPayment(true)} style={{ background: "linear-gradient(135deg, #2563eb, #1d4ed8)", border: "none", borderRadius: 12, padding: "10px 24px", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}><Printer size={16} /> Imprimir</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }

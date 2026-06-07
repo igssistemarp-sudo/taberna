@@ -21,6 +21,7 @@ import {
   LogIn,
   MapPin,
   Package2,
+  Phone,
   Printer,
   Settings,
   ShoppingCart,
@@ -35,6 +36,9 @@ import "./styles.css";
 import CadastroView from "./CadastroView";
 import ProductsModule from "./ProductsModule";
 import TablesModule from "./TablesModule";
+import CustomerModule from "./CustomerModule";
+import DeliveryModule from "./DeliveryModule";
+import { CashPro, ExecutiveDashboard, FinancePro, ReportsPro } from "./AdminModules";
 
 const API_URL = import.meta.env.VITE_API_URL ?? (window.location.port === "5173" ? "http://localhost:3333" : window.location.origin);
 const money = (value: number) => (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -117,6 +121,7 @@ function App() {
   const [orderType, setOrderType] = useState("MESA");
   const [orderTableId, setOrderTableId] = useState("");
   const [orderCustomerId, setOrderCustomerId] = useState("");
+  const [orderCustomer, setOrderCustomer] = useState<any>(null);
   const [orderNeighborhoodId, setOrderNeighborhoodId] = useState("");
   const [orderWaiter, setOrderWaiter] = useState("");
   const [orderNotes, setOrderNotes] = useState("");
@@ -274,13 +279,11 @@ function App() {
     return (
       <div className="login-shell">
         <div className="login-grid">
-          <section className="login-hero">
+          <section className="login-hero" style={{ backgroundImage: `url(https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=900&q=80)` }}>
+            <div className="login-hero-overlay" />
             <div className="login-hero-top">
-              {loginCompany?.logoUrl ? (
-                <img className="login-company-logo" src={loginCompany.logoUrl} alt={loginCompany.nomeFantasia ?? "Logo da empresa"} />
-              ) : (
-                <div className="login-company-mark">{logoText}</div>
-              )}
+              <img className="login-company-logo" src={loginCompany?.logoUrl || "/logo.png"} alt={loginCompany?.nomeFantasia ?? "Logo"} onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; document.getElementById("login-fallback-mark")!.style.display = "grid"; }} />
+              <div className="login-company-mark" id="login-fallback-mark" style={{ display: "none" }}>{logoText}</div>
               <div className="login-hero-copy">
                 <span className="login-kicker">Sistema para lanchonete, bar e delivery</span>
                 <h1>{loginCompany?.nomeFantasia ?? "IGS Lanchonete PRO"}</h1>
@@ -290,14 +293,14 @@ function App() {
 
             <div className="login-hero-panel">
               <div>
-                <strong>Operação rápida</strong>
-                <span>Mesas, pedidos, cozinha, caixa e delivery em uma tela só.</span>
+                <strong>🔥 Operação completa</strong>
+                <span>PDV, mesas, comandas, delivery, caixa e muito mais em uma única plataforma.</span>
               </div>
               <div className="login-hero-metrics">
-                <span>PDV</span>
-                <span>Comandas</span>
-                <span>Caixa</span>
-                <span>Impressão</span>
+                <span>🚀 Delivery</span>
+                <span>👨‍🍳 Cozinha</span>
+                <span>💰 Caixa</span>
+                <span>📊 Relatórios</span>
               </div>
             </div>
           </section>
@@ -352,7 +355,7 @@ function App() {
     document.title = `IGS Lanchonete PRO - ${pageTitles[page]}`;
   }, [page]);
 
-  return <div className="app-shell">{error && <div className="toast">{error}</div>}<aside className="sidebar"><div className="brand"><div className="logo-mark small">TB</div><div><strong>IGS Lanchonete PRO</strong><span>{data?.user.name} - {data?.user.role}</span></div></div><nav>{nav.map(([key, label, Icon]) => <button key={key} className={page === key ? "active" : ""} onClick={() => setPage(key)}><span className="sidebar-nav-icon"><Icon size={16} /></span> {label}</button>)}</nav><button className="ghost" onClick={logout}>Sair</button></aside><main className="content">{loading && <div className="loading-bar" />}<header className="topbar"><div><span>IGS Lanchonete PRO</span><h1>{pageTitles[page]}</h1></div><div className="topbar-actions"><button className="ghost" onClick={load}><Bell size={16} /> Atualizar</button><button onClick={() => setPage("delivery")}><ClipboardList size={16} /> Novo pedido</button></div></header>{page === "dashboard" && <DashboardView data={data} money={money} mutate={mutate} />}{page === "products" && <section className="stack"><ProductsModule data={data ? { products: data.products as any, categories: data.categories as any } : null} mutate={mutate} money={money} /></section>}{page === "delivery" && <OrdersView data={data} money={money} orderType={orderType} setOrderType={setOrderType} orderTableId={orderTableId} setOrderTableId={setOrderTableId} orderCustomerId={orderCustomerId} setOrderCustomerId={setOrderCustomerId} orderNeighborhoodId={orderNeighborhoodId} setOrderNeighborhoodId={setOrderNeighborhoodId} orderWaiter={orderWaiter} setOrderWaiter={setOrderWaiter} orderNotes={orderNotes} setOrderNotes={setOrderNotes} orderDrafts={orderDrafts} setOrderDrafts={setOrderDrafts} totals={totals} createOrder={createOrder} mutate={mutate} />}{page === "tables" && <TablesModule data={data ? { tables: data.tables as any, products: data.products as any, additions: data.additions as any, customers: data.customers as any, paymentMethods: data.paymentMethods as any, orders: data.orders as any, company: data.company, user: data.user, users: data.users as any } : null} money={money} mutate={mutate} />}{page === "customers" && <CustomersView data={data} mutate={mutate} customerDraft={customerDraft} setCustomerDraft={setCustomerDraft} neighborhoodDraft={neighborhoodDraft} setNeighborhoodDraft={setNeighborhoodDraft} />}{page === "caixa" && <FinanceView data={data} money={money} mutate={mutate} openingCash={openingCash} setOpeningCash={setOpeningCash} closingCash={closingCash} setClosingCash={setClosingCash} />}{page === "financeiro" && <FinanceiroView data={data} money={money} />}{page === "reports" && <ReportsView token={token} />}{page === "cadastro" && <CadastroView data={data} money={money} mutate={mutate} />}{page === "config" && <SettingsView data={data} money={money} companyDraft={companyDraft} setCompanyDraft={setCompanyDraft} mutate={mutate} />}</main></div>;
+  return <div className="app-shell">{error && <div className="toast">{error}</div>}<aside className="sidebar"><div className="brand"><div className="logo-mark small">TB</div><div><strong>IGS Lanchonete PRO</strong><span>{data?.user.name} - {data?.user.role}</span></div></div><nav>{nav.map(([key, label, Icon]) => <button key={key} className={page === key ? "active" : ""} onClick={() => setPage(key)}><span className="sidebar-nav-icon"><Icon size={16} /></span> {label}</button>)}</nav><button className="ghost" onClick={logout}>Sair</button></aside><main className="content">{loading && <div className="loading-bar" />}<header className="topbar"><div><span>IGS Lanchonete PRO</span><h1>{pageTitles[page]}</h1></div><div className="topbar-actions"><button className="ghost" onClick={load}><Bell size={16} /> Atualizar</button><button onClick={() => setPage("delivery")}><ClipboardList size={16} /> Novo pedido</button></div></header>{page === "dashboard" && <ExecutiveDashboard data={data} money={money} />}{page === "products" && <section className="stack"><ProductsModule data={data ? { products: data.products as any, categories: data.categories as any } : null} mutate={mutate} money={money} /></section>}{page === "delivery" && <DeliveryModule data={data ? { products: data.products as any, additions: data.additions as any, neighborhoods: data.neighborhoods as any, orders: data.orders as any, paymentMethods: data.paymentMethods as any, users: data.users as any } : null} money={money} mutate={mutate} reload={load} />}{page === "tables" && <TablesModule data={data ? { tables: data.tables as any, products: data.products as any, additions: data.additions as any, customers: data.customers as any, paymentMethods: data.paymentMethods as any, orders: data.orders as any, company: data.company, user: data.user, users: data.users as any } : null} money={money} mutate={mutate} />}{page === "customers" && <section className="stack"><CustomerModule /></section>}{page === "caixa" && <CashPro data={data} money={money} mutate={mutate} />}{page === "financeiro" && <FinancePro money={money} />}{page === "reports" && <ReportsPro data={data} money={money} />}{page === "cadastro" && <CadastroView data={data} money={money} mutate={mutate} />}{page === "config" && <SettingsView data={data} money={money} companyDraft={companyDraft} setCompanyDraft={setCompanyDraft} mutate={mutate} />}</main></div>;
 }
 
 function DashboardView({ data, money, mutate }: { data: AppData | null; money: (value: number) => string; mutate: (path: string, options?: RequestInit) => Promise<void>; }) {
@@ -406,11 +409,6 @@ function DashboardView({ data, money, mutate }: { data: AppData | null; money: (
       </section>
     </div>
   );
-}
-
-function OrdersView(props: { data: AppData | null; money: (value: number) => string; orderType: string; setOrderType: (value: string) => void; orderTableId: string; setOrderTableId: (value: string) => void; orderCustomerId: string; setOrderCustomerId: (value: string) => void; orderNeighborhoodId: string; setOrderNeighborhoodId: (value: string) => void; orderWaiter: string; setOrderWaiter: (value: string) => void; orderNotes: string; setOrderNotes: (value: string) => void; orderDrafts: ItemDraft[]; setOrderDrafts: React.Dispatch<React.SetStateAction<ItemDraft[]>>; totals: { subtotal: number; fees: number }; createOrder: () => Promise<void>; mutate: (path: string, options?: RequestInit) => Promise<void>; }) {
-  const { data, money, orderType, setOrderType, orderTableId, setOrderTableId, orderCustomerId, setOrderCustomerId, orderNeighborhoodId, setOrderNeighborhoodId, orderWaiter, setOrderWaiter, orderNotes, setOrderNotes, orderDrafts, setOrderDrafts, totals, createOrder, mutate } = props;
-  return <div className="stack"><section className="panel"><h3>Novo pedido</h3><div className="grid-4"><label>Tipo<select value={orderType} onChange={(e) => setOrderType(e.target.value)}><option value="MESA">Mesa</option><option value="BALCAO">Balcão</option><option value="DELIVERY">Entrega</option><option value="ONLINE">On-line</option></select></label><label>Mesa<select value={orderTableId} onChange={(e) => setOrderTableId(e.target.value)}><option value="">Selecione</option>{data?.tables.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>Cliente<select value={orderCustomerId} onChange={(e) => setOrderCustomerId(e.target.value)}><option value="">Avulso</option>{data?.customers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>Bairro<select value={orderNeighborhoodId} onChange={(e) => setOrderNeighborhoodId(e.target.value)}><option value="">Auto</option>{data?.neighborhoods.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label></div><label>Garçom<input value={orderWaiter} onChange={(e) => setOrderWaiter(e.target.value)} /></label><label>Observações<textarea rows={2} value={orderNotes} onChange={(e) => setOrderNotes(e.target.value)} /></label>{orderDrafts.map((draft, index) => <div className="item-box" key={index}><div className="grid-4"><label>Produto<select value={draft.productId} onChange={(e) => setOrderDrafts((current) => current.map((item, i) => i === index ? { ...item, productId: e.target.value } : item))}><option value="">Selecione</option>{data?.products.map((item) => <option key={item.id} value={item.id}>{item.code} - {item.name} - {money(item.salePriceCents)}</option>)}</select></label><label>Qtd.<input type="number" value={draft.quantity} onChange={(e) => setOrderDrafts((current) => current.map((item, i) => i === index ? { ...item, quantity: Number(e.target.value) } : item))} /></label><label>Obs.<input value={draft.note} onChange={(e) => setOrderDrafts((current) => current.map((item, i) => i === index ? { ...item, note: e.target.value } : item))} /></label><label>Adicionais<select multiple value={draft.additiveIds} onChange={(e) => setOrderDrafts((current) => current.map((item, i) => i === index ? { ...item, additiveIds: Array.from(e.target.selectedOptions).map((option) => option.value) } : item))}>{data?.additions.map((item) => <option key={item.id} value={item.id}>{item.name} + {money(item.valueCents)}</option>)}</select></label></div><div className="row-actions"><button className="ghost" onClick={() => setOrderDrafts((current) => current.filter((_, i) => i !== index))}>Remover item</button></div></div>)}<div className="row-actions"><button className="ghost" onClick={() => setOrderDrafts((current) => [...current, emptyDraft()])}>Adicionar item</button><button onClick={createOrder}><ShoppingCart size={16} /> Enviar pedido</button></div><div className="summary-grid"><div className="summary-card"><span>Subtotal</span><strong>{money(totals.subtotal)}</strong></div><div className="summary-card"><span>Taxas</span><strong>{money(totals.fees)}</strong></div><div className="summary-card"><span>Total</span><strong>{money(totals.subtotal + totals.fees)}</strong></div></div></section><section className="panel"><h3>Pedidos recentes</h3><div className="order-list">{data?.orders.map((order) => <article className="order-card" key={order.id}><div className="row-between"><strong>#{order.number} {order.type}</strong><span>{order.status}</span></div><p>{order.customerNameSnapshot ?? "Sem cliente"}</p><small>{money(order.items.reduce((sum, item) => sum + item.totalCents, 0) + order.deliveryFeeCents)}</small><div className="row-actions wrap"><button className="ghost" onClick={() => mutate(`/api/orders/${order.id}/reprint`, { method: "POST" })}>Reimprimir</button><button className="ghost" onClick={() => mutate(`/api/orders/${order.id}/status`, { method: "POST", body: JSON.stringify({ status: "EM_PREPARO" }) })}>Preparar</button><button className="ghost danger" onClick={() => mutate(`/api/orders/${order.id}/cancel`, { method: "POST", body: JSON.stringify({ reason: "Cancelado no caixa" }) })}>Cancelar</button></div></article>)}</div></section></div>;
 }
 
 function CustomersView({ data, mutate, customerDraft, setCustomerDraft, neighborhoodDraft, setNeighborhoodDraft }: { data: AppData | null; mutate: (path: string, options?: RequestInit) => Promise<void>; customerDraft: { name: string; phone: string; whatsapp: string; neighborhoodId: string; street: string; number: string; city: string; state: string; notes: string }; setCustomerDraft: React.Dispatch<React.SetStateAction<{ name: string; phone: string; whatsapp: string; neighborhoodId: string; street: string; number: string; city: string; state: string; notes: string }>>; neighborhoodDraft: { name: string; city: string; deliveryFeeCents: number; avgDeliveryMinutes: number; active: boolean }; setNeighborhoodDraft: React.Dispatch<React.SetStateAction<{ name: string; city: string; deliveryFeeCents: number; avgDeliveryMinutes: number; active: boolean }>>; }) {

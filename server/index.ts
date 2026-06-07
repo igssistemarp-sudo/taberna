@@ -32,6 +32,29 @@ const todayStart = () => {
 
 const optionalText = z.string().trim().optional().nullable().transform((value) => value || null);
 
+function normalizePhone(value?: string | null) {
+  return (value ?? "").replace(/\D/g, "");
+}
+
+function customerClassification(totalOrders: number, totalSpentCents: number) {
+  if (totalOrders >= 50 || totalSpentCents >= 500000) return "DIAMANTE";
+  if (totalOrders >= 25 || totalSpentCents >= 250000) return "OURO";
+  if (totalOrders >= 10 || totalSpentCents >= 100000) return "PRATA";
+  return "BRONZE";
+}
+
+async function ensureUniqueCustomerPhones(phone?: string | null, whatsapp?: string | null, ignoreId?: string) {
+  const values = [normalizePhone(phone), normalizePhone(whatsapp)].filter(Boolean);
+  if (!values.length) return;
+  const existing = await prisma.customer.findFirst({
+    where: {
+      ...(ignoreId ? { id: { not: ignoreId } } : {}),
+      OR: values.flatMap((value) => [{ phone: value }, { whatsapp: value }])
+    }
+  });
+  if (existing) throw new Error("Telefone ou WhatsApp já cadastrado para outro cliente.");
+}
+
 function hashPassword(password: string) {
   const salt = randomUUID().replace(/-/g, "").slice(0, 32);
   const hash = scryptSync(password, salt, 64).toString("hex");
@@ -256,25 +279,40 @@ async function printOrder(orderId: string, target?: PrinterType) {
     ?? printers[0];
   if (!printer) return;
 
+  const init = "\x1b@";
+  const normal = "\x1b!\x00";
+  const big = "\x1b!\x30";
+  const tall = "\x1b!\x10";
+  const boldOn = "\x1bE\x01";
+  const boldOff = "\x1bE\x00";
+
   const lines = [
-    `${company.nomeFantasia}\n`,
-    `Pedido #${order.number} - ${order.type}\n`,
+    init,
+    `${big}${company.nomeFantasia}${normal}\n`,
+    `${boldOn}${tall}PEDIDO #${order.number} - ${order.type}${normal}${boldOff}\n`,
     order.table ? `Mesa: ${order.table.name}\n` : "",
     order.customerNameSnapshot ? `Cliente: ${order.customerNameSnapshot}\n` : "",
+    order.customerPhoneSnapshot ? `Telefone: ${order.customerPhoneSnapshot}\n` : "",
+    order.streetSnapshot ? `Endereco: ${order.streetSnapshot}, ${order.numberSnapshot ?? ""}\n` : "",
+    order.districtSnapshot || order.citySnapshot ? `Bairro/Cidade: ${order.districtSnapshot ?? ""} ${order.citySnapshot ?? ""}\n` : "",
+    order.complementSnapshot ? `Compl: ${order.complementSnapshot}\n` : "",
+    order.referencePointSnapshot ? `Referencia: ${order.referencePointSnapshot}\n` : "",
     `Horario: ${new Date(order.createdAt).toLocaleString("pt-BR")}\n`,
     "--------------------------------\n"
   ];
 
   for (const item of order.items.filter((item) => !target || item.printTarget === target)) {
-    lines.push(`${item.quantity}x ${item.nameSnapshot}\n`);
-    if (item.note) lines.push(`Obs: ${item.note}\n`);
+    lines.push(`${boldOn}${tall}${item.quantity}x ${item.nameSnapshot.toUpperCase()}${normal}${boldOff}\n`);
+    if (item.note) lines.push(`${boldOn}OBS ITEM: ${item.note}${boldOff}\n`);
     for (const additional of item.additives) {
-      lines.push(`  + ${additional.quantity}x ${additional.nameSnapshot}\n`);
+      lines.push(`${boldOn}  >>> OPCIONAL: ${additional.quantity}x ${additional.nameSnapshot.toUpperCase()}${boldOff}\n`);
     }
+    lines.push("--------------------------------\n");
   }
 
-  lines.push("--------------------------------\n");
-  lines.push(`Total: ${formatMoney(order.items.reduce((sum, item) => sum + item.totalCents, 0) + order.deliveryFeeCents)}\n`);
+  lines.push(`${boldOn}${tall}TOTAL: ${formatMoney(order.items.reduce((sum, item) => sum + item.totalCents, 0) + order.deliveryFeeCents)}${normal}${boldOff}\n`);
+  if (order.notes) lines.push(`${boldOn}OBS/PAGAMENTO:${boldOff}\n${order.notes}\n`);
+  if (order.changeForCents > 0) lines.push(`${boldOn}LEVAR TROCO PARA: ${formatMoney(order.changeForCents)}${boldOff}\n`);
   lines.push("\n\n");
 
   await sendRawToPrinter(printer.ip, printer.port, lines.join(""));
@@ -382,6 +420,58 @@ app.get("/api/dashboard", async (_req, res, next) => {
     const productSales = new Map<string, number>();
     for (const order of orders) for (const item of order.items) productSales.set(item.nameSnapshot, (productSales.get(item.nameSnapshot) ?? 0) + item.quantity);
 
+    const salesByTypeMap = new Map<string, number>();
+    for (const order of orders) {
+      const total = calcOrderTotals(order.items.map((item) => ({ quantity: item.quantity, unitPriceCents: item.unitPriceCents, additives: [] }))) + order.deliveryFeeCents;
+      salesByTypeMap.set(order.type, (salesByTypeMap.get(order.type) ?? 0) + total);
+    }
+    const salesByType = Array.from(salesByTypeMap.entries()).sort((a, b) => b[1] - a[1]).map(([type, amountCents]) => ({ type, amountCents }));
+
+    const paymentMap = new Map<string, number>();
+    for (const order of orders) {
+      for (const pmt of order.payments) {
+        paymentMap.set(pmt.methodNameSnapshot, (paymentMap.get(pmt.methodNameSnapshot) ?? 0) + pmt.amountCents);
+      }
+    }
+    const paymentSummary = Array.from(paymentMap.entries()).sort((a, b) => b[1] - a[1]).map(([name, amountCents]) => ({ name, amountCents }));
+
+    const sevenDaysAgo = new Date(start);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+    const weekOrders = await prisma.order.findMany({
+      where: { createdAt: { gte: sevenDaysAgo }, status: { not: "CANCELADO" } },
+      include: { items: true }
+    });
+    const dayTotals = new Map<string, number>();
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(sevenDaysAgo);
+      d.setDate(d.getDate() + i);
+      const key = d.toLocaleDateString("pt-BR", { weekday: "short", day: "numeric" });
+      dayTotals.set(key, 0);
+    }
+    for (const order of weekOrders) {
+      const key = new Date(order.createdAt).toLocaleDateString("pt-BR", { weekday: "short", day: "numeric" });
+      const total = calcOrderTotals(order.items.map((item) => ({ quantity: item.quantity, unitPriceCents: item.unitPriceCents, additives: [] }))) + order.deliveryFeeCents;
+      dayTotals.set(key, (dayTotals.get(key) ?? 0) + total);
+    }
+    const salesByDay = Array.from(dayTotals.entries()).map(([day, amountCents]) => ({ day, amountCents }));
+
+    const hourTotals = new Map<string, number>();
+    for (let h = 0; h < 24; h++) hourTotals.set(`${h}h`, 0);
+    for (const order of orders) {
+      const hour = new Date(order.createdAt).getHours();
+      const key = `${hour}h`;
+      const total = calcOrderTotals(order.items.map((item) => ({ quantity: item.quantity, unitPriceCents: item.unitPriceCents, additives: [] }))) + order.deliveryFeeCents;
+      hourTotals.set(key, (hourTotals.get(key) ?? 0) + total);
+    }
+    const salesByHour = Array.from(hourTotals.entries()).map(([hour, amountCents]) => ({ hour, amountCents }));
+
+    const activeDeliveries = await prisma.order.findMany({
+      where: { type: { in: ["DELIVERY", "ONLINE"] }, status: { in: ["NOVO", "ACEITO", "EM_PREPARO", "SAIU_PARA_ENTREGA"] } },
+      include: { items: true, neighborhood: true },
+      orderBy: { createdAt: "desc" },
+      take: 20
+    });
+
     res.json({
       totalSoldToday,
       pendingOrders,
@@ -391,12 +481,22 @@ app.get("/api/dashboard", async (_req, res, next) => {
       receivablesOpen: receivables.reduce((sum, item) => sum + item.amountCents, 0),
       lowStock: products.map((item) => ({ id: item.id, name: item.name, stockCurrent: item.stockCurrent, lowStockThreshold: item.lowStockThreshold })),
       topProducts: Array.from(productSales.entries()).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([name, quantity]) => ({ name, quantity })),
-      salesByDay: Array.from({ length: 7 }, (_, index) => ({ day: `D-${6 - index}`, amountCents: Math.max(0, totalSoldToday - index * 1000) })),
-      paymentSummary: [
-        { name: "Pix", amountCents: totalSoldToday * 0.4 },
-        { name: "Dinheiro", amountCents: totalSoldToday * 0.25 },
-        { name: "Cartao", amountCents: totalSoldToday * 0.35 }
-      ]
+      salesByDay,
+      paymentSummary,
+      salesByType,
+      salesByHour,
+      activeDeliveries: activeDeliveries.map((o) => ({
+        id: o.id,
+        number: o.number,
+        type: o.type,
+        status: o.status,
+        customerName: o.customerNameSnapshot,
+        neighborhoodName: o.neighborhood?.name ?? null,
+        deliveryFeeCents: o.deliveryFeeCents,
+        totalCents: calcOrderTotals(o.items.map((item) => ({ quantity: item.quantity, unitPriceCents: item.unitPriceCents, additives: [] }))) + o.deliveryFeeCents,
+        minutesAgo: Math.round((Date.now() - new Date(o.createdAt).getTime()) / 60000),
+        driver: o.deliveryDriverName ?? null
+      }))
     });
   } catch (error) {
     next(error);
@@ -491,20 +591,171 @@ app.put("/api/neighborhoods/:id", requireRole("ADMIN", "GERENTE", "CAIXA"), asyn
 });
 app.delete("/api/neighborhoods/:id", requireRole("ADMIN", "GERENTE"), async (req: AuthedRequest, res, next) => { try { await prisma.neighborhood.delete({ where: { id: asString(req.params.id) } }); res.status(204).end(); } catch (error) { next(error); } });
 
-app.get("/api/customers", async (_req, res) => res.json(await prisma.customer.findMany({ include: { neighborhood: true }, orderBy: { createdAt: "desc" } })));
+app.get("/api/customers", async (_req, res) => res.json(await prisma.customer.findMany({
+  include: { neighborhood: true, addresses: { include: { neighborhood: true } } },
+  orderBy: { createdAt: "desc" }
+})));
+app.get("/api/customers/search", async (req, res, next) => {
+  try {
+    const q = asString(req.query.q ?? "");
+    if (q.length < 2) return res.json([]);
+    const digits = q.replace(/\D/g, "");
+    const customers = await prisma.customer.findMany({
+      where: {
+        OR: [
+          { phone: { contains: digits } },
+          { whatsapp: { contains: digits } },
+          { name: { contains: q, mode: "insensitive" } }
+        ]
+      },
+      include: { neighborhood: true, addresses: { include: { neighborhood: true }, take: 5 }, _count: { select: { orders: true } } },
+      orderBy: [{ totalOrders: "desc" }],
+      take: 10
+    });
+    res.json(customers.map(c => ({ ...c, orderCount: c._count.orders, _count: undefined })));
+  } catch (error) { next(error); }
+});
+app.get("/api/customers/:id", async (req, res, next) => {
+  try {
+    const customer = await prisma.customer.findUnique({
+      where: { id: asString(req.params.id) },
+      include: { neighborhood: true, addresses: { include: { neighborhood: true }, orderBy: { isMain: "desc" } } }
+    });
+    if (!customer) return res.status(404).json({ message: "Cliente não encontrado" });
+    const orders = await prisma.order.findMany({
+      where: { customerId: customer.id },
+      include: { items: { include: { additives: true } }, payments: true },
+      orderBy: { createdAt: "desc" },
+      take: 50
+    });
+    const totalSpent = orders.reduce((sum, o) => {
+      const subtotal = o.items.reduce((s, i) => s + i.totalCents, 0);
+      return sum + subtotal + o.deliveryFeeCents - o.discountCents;
+    }, 0);
+    const lastOrder = orders[0] ?? null;
+    res.json({ ...customer, orders, totalSpent, lastOrder });
+  } catch (error) { next(error); }
+});
 app.post("/api/customers", requireRole("ADMIN", "GERENTE", "CAIXA", "GARCOM"), async (req: AuthedRequest, res, next) => {
   try {
-    const body = z.object({ name: z.string().min(2), document: optionalText, phone: optionalText, whatsapp: optionalText, email: optionalText, zipCode: optionalText, street: optionalText, number: optionalText, neighborhoodId: optionalText, district: optionalText, city: optionalText, state: optionalText, complement: optionalText, referencePoint: optionalText, notes: optionalText }).parse(req.body);
-    const created = await prisma.customer.create({ data: body });
+    const body = z.object({
+      name: z.string().min(2), nickname: optionalText,
+      document: optionalText, rg: optionalText, birthDate: optionalText, gender: optionalText,
+      phone: optionalText, whatsapp: optionalText, commercialPhone: optionalText, email: optionalText,
+      zipCode: optionalText, street: optionalText, number: optionalText,
+      neighborhoodId: optionalText, district: optionalText, city: optionalText, state: optionalText,
+      complement: optionalText, referencePoint: optionalText,
+      latitude: z.number().optional(), longitude: z.number().optional(),
+      hasDog: z.boolean().optional(), hasDoorman: z.boolean().optional(),
+      apartment: optionalText, block: optionalText, condoName: optionalText,
+      bestDeliveryTime: optionalText, deliveryNotes: optionalText,
+      notes: optionalText
+    }).parse(req.body);
+    body.phone = normalizePhone(body.phone) as any || null;
+    body.whatsapp = normalizePhone(body.whatsapp) as any || null;
+    body.commercialPhone = normalizePhone(body.commercialPhone) as any || null;
+    await ensureUniqueCustomerPhones(body.phone, body.whatsapp);
+    if (body.birthDate) body.birthDate = new Date(body.birthDate as any) as any;
+    const created = await prisma.customer.create({ data: body as any });
     await audit(req.user?.id, "CREATE", "customer", created.id, body);
     res.status(201).json(created);
   } catch (error) { next(error); }
 });
-app.put("/api/customers/:id", requireRole("ADMIN", "GERENTE", "CAIXA", "GARCOM"), async (req: AuthedRequest, res, next) => { try { const body = z.object({ name: z.string().min(2).optional(), document: optionalText, phone: optionalText, whatsapp: optionalText, email: optionalText, zipCode: optionalText, street: optionalText, number: optionalText, neighborhoodId: optionalText, district: optionalText, city: optionalText, state: optionalText, complement: optionalText, referencePoint: optionalText, notes: optionalText }).parse(req.body); const updated = await prisma.customer.update({ where: { id: asString(req.params.id) }, data: body }); await audit(req.user?.id, "UPDATE", "customer", updated.id, body); res.json(updated); } catch (error) { next(error); } });
+app.put("/api/customers/:id", requireRole("ADMIN", "GERENTE", "CAIXA", "GARCOM"), async (req: AuthedRequest, res, next) => {
+  try {
+    const body = z.object({
+      name: z.string().min(2).optional(), nickname: optionalText,
+      document: optionalText, rg: optionalText, birthDate: optionalText, gender: optionalText,
+      phone: optionalText, whatsapp: optionalText, commercialPhone: optionalText, email: optionalText,
+      zipCode: optionalText, street: optionalText, number: optionalText,
+      neighborhoodId: optionalText, district: optionalText, city: optionalText, state: optionalText,
+      complement: optionalText, referencePoint: optionalText,
+      latitude: z.number().optional(), longitude: z.number().optional(),
+      hasDog: z.boolean().optional(), hasDoorman: z.boolean().optional(),
+      apartment: optionalText, block: optionalText, condoName: optionalText,
+      bestDeliveryTime: optionalText, deliveryNotes: optionalText,
+      notes: optionalText
+    }).parse(req.body);
+    body.phone = normalizePhone(body.phone) as any || null;
+    body.whatsapp = normalizePhone(body.whatsapp) as any || null;
+    body.commercialPhone = normalizePhone(body.commercialPhone) as any || null;
+    await ensureUniqueCustomerPhones(body.phone, body.whatsapp, asString(req.params.id));
+    if (body.birthDate) body.birthDate = new Date(body.birthDate as any) as any;
+    const updated = await prisma.customer.update({ where: { id: asString(req.params.id) }, data: body as any });
+    await audit(req.user?.id, "UPDATE", "customer", updated.id, body);
+    res.json(updated);
+  } catch (error) { next(error); }
+});
 app.delete("/api/customers/:id", requireRole("ADMIN", "GERENTE"), async (req: AuthedRequest, res, next) => { try { await prisma.customer.delete({ where: { id: asString(req.params.id) } }); res.status(204).end(); } catch (error) { next(error); } });
-app.get("/api/customers/:id/history", async (req, res) => {
-  const history = await prisma.order.findMany({ where: { customerId: asString(req.params.id) }, include: { items: { include: { additives: true } }, payments: true }, orderBy: { createdAt: "desc" } });
-  res.json(history);
+app.get("/api/customers/:id/orders", async (req, res, next) => {
+  try {
+    const orders = await prisma.order.findMany({
+      where: { customerId: asString(req.params.id) },
+      include: { items: { include: { additives: true } }, payments: true },
+      orderBy: { createdAt: "desc" },
+      take: 50
+    });
+    res.json(orders);
+  } catch (error) { next(error); }
+});
+app.post("/api/customers/:id/orders/:orderId/repeat", requireRole("ADMIN", "GERENTE", "CAIXA", "GARCOM"), async (req: AuthedRequest, res, next) => {
+  try {
+    const source = await prisma.order.findUnique({ where: { id: asString(req.params.orderId) }, include: { items: { include: { additives: true } } } });
+    if (!source) return res.status(404).json({ message: "Pedido não encontrado" });
+    const orderNumber = ((await prisma.order.findFirst({ orderBy: { number: "desc" } }))?.number ?? 0) + 1;
+    const newOrder = await prisma.order.create({
+      data: {
+        number: orderNumber, type: source.type, status: "NOVO",
+        customerId: source.customerId, neighborhoodId: source.neighborhoodId,
+        notes: `Repetido do pedido #${source.number}`,
+        items: { create: source.items.map(i => ({
+          productId: i.productId, nameSnapshot: i.nameSnapshot,
+          quantity: i.quantity, unitPriceCents: i.unitPriceCents,
+          totalCents: i.totalCents, printTarget: i.printTarget,
+          additives: { create: i.additives.map(a => ({
+            additionalId: a.additionalId, nameSnapshot: a.nameSnapshot,
+            quantity: a.quantity, unitPriceCents: a.unitPriceCents, totalCents: a.totalCents
+          })) }
+        })) }
+      }
+    });
+    await audit(req.user?.id, "CREATE", "order", newOrder.id, { repeatedFrom: source.id });
+    res.status(201).json(newOrder);
+  } catch (error) { next(error); }
+});
+// Customer addresses
+app.post("/api/customers/:id/addresses", requireRole("ADMIN", "GERENTE", "CAIXA", "GARCOM"), async (req: AuthedRequest, res, next) => {
+  try {
+    const body = z.object({
+      label: z.string().default("Casa"), zipCode: optionalText, street: optionalText, number: optionalText,
+      complement: optionalText, district: optionalText, city: optionalText, state: optionalText,
+      neighborhoodId: optionalText, referencePoint: optionalText,
+      latitude: z.number().optional(), longitude: z.number().optional(),
+      hasDog: z.boolean().optional(), hasDoorman: z.boolean().optional(),
+      apartment: optionalText, block: optionalText, condoName: optionalText,
+      bestDeliveryTime: optionalText, deliveryNotes: optionalText, isMain: z.boolean().optional()
+    }).parse(req.body);
+    const created = await prisma.customerAddress.create({ data: { ...body, customerId: asString(req.params.id) } as any });
+    res.status(201).json(created);
+  } catch (error) { next(error); }
+});
+app.put("/api/customers/:id/addresses/:addrId", requireRole("ADMIN", "GERENTE", "CAIXA", "GARCOM"), async (req: AuthedRequest, res, next) => {
+  try {
+    const body = z.object({
+      label: optionalText, zipCode: optionalText, street: optionalText, number: optionalText,
+      complement: optionalText, district: optionalText, city: optionalText, state: optionalText,
+      neighborhoodId: optionalText, referencePoint: optionalText,
+      latitude: z.number().optional(), longitude: z.number().optional(),
+      hasDog: z.boolean().optional(), hasDoorman: z.boolean().optional(),
+      apartment: optionalText, block: optionalText, condoName: optionalText,
+      bestDeliveryTime: optionalText, deliveryNotes: optionalText, isMain: z.boolean().optional()
+    }).parse(req.body);
+    const updated = await prisma.customerAddress.update({ where: { id: asString(req.params.addrId) }, data: body as any });
+    res.json(updated);
+  } catch (error) { next(error); }
+});
+app.delete("/api/customers/:id/addresses/:addrId", requireRole("ADMIN", "GERENTE", "CAIXA", "GARCOM"), async (req: AuthedRequest, res, next) => {
+  try { await prisma.customerAddress.delete({ where: { id: asString(req.params.addrId) } }); res.status(204).end(); } catch (error) { next(error); }
 });
 
 app.get("/api/categories", async (_req, res) => res.json(await prisma.productCategory.findMany({ include: { products: true }, orderBy: { name: "asc" } })));
@@ -808,8 +1059,29 @@ app.post("/api/orders", requireRole("ADMIN", "GERENTE", "CAIXA", "GARCOM"), asyn
     });
 
     await updateOrderStock(created.id, created.items.map((item) => ({ productId: item.productId, quantity: item.quantity }))); 
+    if (created.customerId) {
+      const spent = created.items.reduce((sum, item) => sum + item.totalCents, 0) + created.deliveryFeeCents - created.discountCents;
+      const customer = await prisma.customer.findUnique({ where: { id: created.customerId } });
+      if (customer) {
+        const totalOrders = customer.totalOrders + 1;
+        const totalSpentCents = customer.totalSpentCents + spent;
+        await prisma.customer.update({
+          where: { id: customer.id },
+          data: {
+            totalOrders,
+            totalSpentCents,
+            lastPurchaseAt: created.createdAt,
+            loyaltyPoints: customer.loyaltyPoints + Math.floor(spent / 100),
+            classification: customerClassification(totalOrders, totalSpentCents)
+          }
+        });
+      }
+    }
     if (created.tableId) await prisma.serviceTable.update({ where: { id: created.tableId }, data: { status: "OCUPADA", waiterName: req.user?.name, customerName: created.customerNameSnapshot } });
-    if (body.type !== "ONLINE") await printOrder(created.id);
+    if (body.type !== "ONLINE") {
+      const targets = Array.from(new Set(created.items.map((item) => item.printTarget)));
+      for (const printTarget of targets) await printOrder(created.id, printTarget);
+    }
     await audit(req.user?.id, "CREATE", "order", created.id, body);
     res.status(201).json(created);
   } catch (error) { next(error); }
@@ -857,6 +1129,31 @@ app.post("/api/orders/:id/apply-discount", requireRole("ADMIN", "GERENTE", "CAIX
   try { const body = z.object({ discountCents: z.number().int().default(0), discountPercent: z.number().default(0) }).parse(req.body); const updated = await prisma.order.update({ where: { id: asString(req.params.id) }, data: { discountCents: body.discountCents, discountPercent: body.discountPercent } }); res.json(updated); } catch (error) { next(error); }
 });
 
+app.put("/api/orders/:id/delivery", requireRole("ADMIN", "GERENTE", "CAIXA", "GARCOM", "ENTREGADOR"), async (req: AuthedRequest, res, next) => {
+  try {
+    const body = z.object({
+      deliveryDriverName: optionalText,
+      notes: optionalText,
+      changeForCents: z.number().int().optional(),
+      status: z.enum(["NOVO", "ACEITO", "EM_PREPARO", "PRONTO", "SAIU_PARA_ENTREGA", "ENTREGUE", "FECHANDO_CONTA", "PAGO", "CANCELADO"]).optional()
+    }).parse(req.body);
+    const updated = await prisma.order.update({
+      where: { id: asString(req.params.id) },
+      data: {
+        deliveryDriverName: body.deliveryDriverName,
+        notes: body.notes,
+        ...(body.changeForCents !== undefined ? { changeForCents: body.changeForCents } : {}),
+        ...(body.status ? { status: body.status } : {}),
+        ...(body.status === "SAIU_PARA_ENTREGA" ? { dispatchedAt: new Date() } : {}),
+        ...(body.status === "ENTREGUE" ? { deliveredAt: new Date() } : {})
+      },
+      include: { items: { include: { additives: true } }, payments: true, customer: true, neighborhood: true }
+    });
+    await audit(req.user?.id, "UPDATE_DELIVERY", "order", updated.id, body);
+    res.json(updated);
+  } catch (error) { next(error); }
+});
+
 app.post("/api/orders/:id/pay", requireRole("ADMIN", "GERENTE", "CAIXA"), async (req: AuthedRequest, res, next) => {
   try {
     const body = z.object({ customerId: optionalText, payments: z.array(z.object({ paymentMethodId: z.string().optional().nullable(), methodNameSnapshot: z.string().min(2), amountCents: z.number().int().nonnegative(), feeCents: z.number().int().default(0), changeCents: z.number().int().default(0) })), generateReceivable: z.boolean().default(false), receivableDueDate: z.string().optional() }).parse(req.body);
@@ -866,6 +1163,8 @@ app.post("/api/orders/:id/pay", requireRole("ADMIN", "GERENTE", "CAIXA"), async 
     const result = await prisma.$transaction(async (tx) => {
       const cashRegister = await tx.cashRegister.findFirst({ where: { closedAt: null } });
       if (!cashRegister) throw new Error("Abra o caixa para receber pagamentos.");
+      await tx.orderPayment.deleteMany({ where: { orderId: order.id } });
+      await tx.cashMovement.deleteMany({ where: { orderId: order.id, type: "PAGAMENTO" } });
       await tx.orderPayment.createMany({ data: body.payments.map((payment) => ({ ...payment, orderId: order.id })) });
       const updated = await tx.order.update({ where: { id: order.id }, data: { status: "PAGO" } });
       await tx.cashMovement.createMany({ data: body.payments.map((payment) => ({ cashRegisterId: cashRegister.id, type: "PAGAMENTO", description: `Recebimento pedido #${order.number}`, amountCents: payment.amountCents, paymentMethodName: payment.methodNameSnapshot, orderId: order.id, userId: req.user?.id })) });
@@ -877,6 +1176,21 @@ app.post("/api/orders/:id/pay", requireRole("ADMIN", "GERENTE", "CAIXA"), async 
     if (result.tableId) await prisma.serviceTable.update({ where: { id: result.tableId }, data: { status: "LIVRE", waiterName: null, customerName: null } });
     res.json(result);
   } catch (error) { next(error); }
+});
+
+app.get("/api/finance/payables", async (_req, res) => res.json(await prisma.payable.findMany({ orderBy: { dueDate: "asc" } })));
+app.post("/api/finance/payables", requireRole("ADMIN", "GERENTE", "CAIXA"), async (req: AuthedRequest, res, next) => {
+  try { const body = z.object({ supplierName: optionalText, description: z.string().min(2), category: optionalText, amountCents: z.number().int(), dueDate: z.string(), paymentMethod: optionalText, notes: optionalText }).parse(req.body); res.status(201).json(await prisma.payable.create({ data: { ...body, dueDate: new Date(body.dueDate), status: "ABERTO" } })); } catch (error) { next(error); }
+});
+app.put("/api/finance/payables/:id/pay", requireRole("ADMIN", "GERENTE", "CAIXA"), async (req: AuthedRequest, res, next) => {
+  try { res.json(await prisma.payable.update({ where: { id: asString(req.params.id) }, data: { status: "PAGO", paidAt: new Date() } })); } catch (error) { next(error); }
+});
+app.get("/api/finance/receivables", async (_req, res) => res.json(await prisma.receivable.findMany({ orderBy: { dueDate: "asc" } })));
+app.post("/api/finance/receivables", requireRole("ADMIN", "GERENTE", "CAIXA"), async (req: AuthedRequest, res, next) => {
+  try { const body = z.object({ customerName: optionalText, description: z.string().min(2), amountCents: z.number().int(), dueDate: z.string(), paymentMethod: optionalText, notes: optionalText }).parse(req.body); res.status(201).json(await prisma.receivable.create({ data: { ...body, dueDate: new Date(body.dueDate), status: "ABERTO" } })); } catch (error) { next(error); }
+});
+app.put("/api/finance/receivables/:id/pay", requireRole("ADMIN", "GERENTE", "CAIXA"), async (req: AuthedRequest, res, next) => {
+  try { res.json(await prisma.receivable.update({ where: { id: asString(req.params.id) }, data: { status: "PAGO", receivedAt: new Date() } })); } catch (error) { next(error); }
 });
 
 app.get("/api/public/menu", async (req, res) => {

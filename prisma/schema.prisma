@@ -125,33 +125,84 @@ model Neighborhood {
   avgDeliveryMinutes Int      @default(30)
   active             Boolean  @default(true)
   customers          Customer[]
+  customerAddresses  CustomerAddress[] @relation("AddressNeighborhood")
   orders             Order[]
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 }
 
 model Customer {
+  id               String   @id @default(cuid())
+  name             String
+  nickname         String?
+  document         String?  @unique
+  rg               String?
+  birthDate        DateTime?
+  gender           String?
+  phone            String?
+  whatsapp         String?
+  commercialPhone  String?
+  email            String?
+  zipCode          String?
+  street           String?
+  number           String?
+  neighborhoodId   String?
+  neighborhood     Neighborhood? @relation(fields: [neighborhoodId], references: [id])
+  district         String?
+  city             String?
+  state            String?
+  complement       String?
+  referencePoint   String?
+  latitude         Float?
+  longitude        Float?
+  hasDog           Boolean  @default(false)
+  hasDoorman       Boolean  @default(false)
+  apartment        String?
+  block            String?
+  condoName        String?
+  bestDeliveryTime String?
+  deliveryNotes    String?
+  notes            String?
+  totalOrders      Int      @default(0)
+  totalSpentCents  Int      @default(0)
+  classification   String   @default("BRONZE")
+  loyaltyPoints    Int      @default(0)
+  lastPurchaseAt   DateTime?
+  addresses        CustomerAddress[]
+  orders           Order[]
+  receivables      Receivable[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model CustomerAddress {
   id             String   @id @default(cuid())
-  name           String
-  document       String?
-  phone          String?
-  whatsapp       String?
-  email          String?
+  customerId     String
+  customer       Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  label          String   @default("Casa")
   zipCode        String?
   street         String?
   number         String?
-  neighborhoodId String?
-  neighborhood   Neighborhood? @relation(fields: [neighborhoodId], references: [id])
+  complement     String?
   district       String?
   city           String?
   state          String?
-  complement     String?
+  neighborhoodId String?
+  neighborhood   Neighborhood? @relation("AddressNeighborhood", fields: [neighborhoodId], references: [id])
   referencePoint String?
-  notes          String?
-  orders         Order[]
-  receivables    Receivable[]
+  latitude       Float?
+  longitude      Float?
+  hasDog         Boolean  @default(false)
+  hasDoorman     Boolean  @default(false)
+  apartment      String?
+  block          String?
+  condoName      String?
+  bestDeliveryTime String?
+  deliveryNotes  String?
+  isMain         Boolean  @default(false)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+  @@index([customerId])
 }
 
 model ProductCategory {

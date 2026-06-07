@@ -45,6 +45,17 @@ async function main() {
     });
   }
 
+  for (const driver of [
+    { name: "Motoqueiro 1", login: "moto1", role: UserRole.ENTREGADOR },
+    { name: "Motoqueiro 2", login: "moto2", role: UserRole.ENTREGADOR }
+  ]) {
+    await prisma.user.upsert({
+      where: { login: driver.login },
+      update: { name: driver.name, role: driver.role, active: true },
+      create: { ...driver, passwordHash, active: true }
+    });
+  }
+
   for (const neighborhood of [
     { name: "Centro", city: "IGS", deliveryFeeCents: 500, avgDeliveryMinutes: 25 },
     { name: "Jardim America", city: "IGS", deliveryFeeCents: 700, avgDeliveryMinutes: 30 },
