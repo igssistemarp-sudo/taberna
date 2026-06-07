@@ -74,6 +74,7 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
 
   const [cancelReason, setCancelReason] = React.useState("");
   const [cancelItemId, setCancelItemId] = React.useState<string | null>(null);
+  const [showCancelTable, setShowCancelTable] = React.useState(false);
   const [showOpenDialog, setShowOpenDialog] = React.useState(false);
 
   React.useEffect(() => { if (initialData) setTables(initialData.tables); }, [initialData]);
@@ -157,6 +158,19 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
     } catch (e: any) { setError(e.message); } finally { setLoading(false); }
   }
 
+  async function cancelTable() {
+    if (!selectedTable) return;
+    setLoading(true);
+    try {
+      await api(`/api/tables/${selectedTable.id}/cancel`, { method: "POST" });
+      setTables(await api("/api/tables"));
+      setShowCancelTable(false);
+      setView("grid");
+      setSelectedTable(null);
+      setOrders([]);
+    } catch (e: any) { setError(e.message); } finally { setLoading(false); }
+  }
+
   async function transferItems() {
     if (!selectedTable || !transferTarget || !transferItemIds.length) return;
     setLoading(true);
@@ -228,6 +242,7 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
         <div className="row-between">
           <div><h2 style={{ margin: 0 }}>{selectedTable.name}</h2><small style={{ color: "var(--text-muted)" }}>{statusLabel[selectedTable.status]} · {orders[0]?.createdAt ? new Date(orders[0].createdAt).toLocaleString("pt-BR") : ""}</small><div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, background: "linear-gradient(135deg, #dbeafe, #eff6ff)", borderRadius: 50, padding: "4px 14px 4px 10px", width: "fit-content", border: "1px solid #93c5fd" }}><UserRound size={14} style={{ color: "#2563eb" }} /><span style={{ fontSize: 13, fontWeight: 600, color: "#1e40af" }}>Cliente:</span><input value={selectedTable.customerName ?? ""} autoFocus={!selectedTable.customerName} onChange={async (e) => { const v = e.target.value; await api(`/api/tables/${selectedTable.id}`, { method: "PUT", body: JSON.stringify({ customerName: v || null }) }); const updated = await api("/api/tables"); setTables(updated); setSelectedTable(updated.find((t: any) => t.id === selectedTable.id) ?? null); }} style={{ background: "transparent", border: "none", color: "#1e3a5f", fontWeight: 700, fontSize: 14, padding: "2px 4px", minWidth: 100, outline: "none" }} placeholder="Digite o nome..." /></div></div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button onClick={() => setShowCancelTable(true)} style={{ background: "linear-gradient(135deg, #ef4444, #dc2626)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(239,68,68,0.3)" }}><Trash2 size={15} /> Cancelar Mesa</button>
             <button onClick={() => { setTransferTarget(""); setTransferItemIds([]); setShowTransfer(true); }} style={{ background: "linear-gradient(135deg, #f59e0b, #d97706)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(245,158,11,0.3)" }}><ArrowLeftRight size={15} /> Transferir</button>
             <button onClick={() => { setMergeSources([]); setShowMergeModal(true); }} style={{ background: "linear-gradient(135deg, #8b5cf6, #7c3aed)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(139,92,246,0.3)" }}><Merge size={15} /> Juntar</button>
             <button onClick={() => setView("payment")} style={{ background: "linear-gradient(135deg, #10b981, #059669)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(16,185,129,0.3)" }}><DollarSign size={15} /> Pagamento</button>
@@ -316,6 +331,22 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
             <label>Motivo<select value={cancelReason} onChange={(e) => setCancelReason(e.target.value)}><option value="">Selecione...</option><option value="Cliente desistiu">Cliente desistiu</option><option value="Produto lancado errado">Produto lançado errado</option><option value="Produto indisponivel">Produto indisponível</option><option value="Erro do garcom">Erro do garçom</option><option value="Cortesia autorizada">Cortesia autorizada</option></select></label>
             <div className="row-actions"><button disabled={!cancelReason} onClick={cancelItem}>Confirmar cancelamento</button><button className="ghost" onClick={() => setCancelItemId(null)}>Voltar</button></div>
           </section>
+        )}
+
+        {showCancelTable && selectedTable && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.6)", zIndex: 998, display: "grid", placeItems: "center", backdropFilter: "blur(4px)" }} onClick={() => setShowCancelTable(false)}>
+            <div style={{ background: "#fff", borderRadius: 20, width: 400, maxWidth: "90vw", boxShadow: "0 25px 80px rgba(0,0,0,0.2)", overflow: "hidden" }} onClick={(e) => e.stopPropagation()}>
+              <div style={{ padding: "28px 24px 20px", textAlign: "center" }}>
+                <div style={{ width: 56, height: 56, borderRadius: "50%", background: "#fef2f2", display: "grid", placeItems: "center", margin: "0 auto 12px" }}><Trash2 size={24} style={{ color: "#ef4444" }} /></div>
+                <h3 style={{ margin: "0 0 4px", color: "#1e293b" }}>Cancelar {selectedTable.name}?</h3>
+                <p style={{ color: "#64748b", fontSize: 14, margin: 0 }}>Todos os itens desta mesa serão cancelados e a mesa será liberada.</p>
+              </div>
+              <div style={{ padding: "16px 24px", borderTop: "1px solid #e2e8f0", display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <button className="ghost" onClick={() => setShowCancelTable(false)} style={{ borderRadius: 10, padding: "10px 20px" }}>Voltar</button>
+                <button onClick={cancelTable} style={{ background: "linear-gradient(135deg, #ef4444, #dc2626)", color: "#fff", border: "none", borderRadius: 10, padding: "10px 24px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Sim, Cancelar Mesa</button>
+              </div>
+            </div>
+          </div>
         )}
 
         {showTransfer && selectedTable && (
