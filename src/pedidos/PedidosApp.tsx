@@ -22,7 +22,7 @@ import {
 
 type MoneyFn = (value: number) => string;
 
-type ServerConfig = { baseUrl: string; serverName: string };
+type ServerConfig = { baseUrl: string; serverName: string; mode?: "local" | "web" };
 type User = { id: string; name: string; login: string; role: string; active: boolean };
 type Company = { id: string; razaoSocial: string; nomeFantasia: string; logoUrl?: string | null; theme?: string | null };
 type TableData = { id: string; name: string; status: string; waiterName?: string | null; customerName?: string | null; active: boolean };
@@ -51,6 +51,12 @@ function loadConfig(): ServerConfig | null {
   } catch {
     return null;
   }
+}
+
+function inferMode(baseUrl?: string) {
+  if (!baseUrl) return "local" as const;
+  if (baseUrl === window.location.origin) return "web" as const;
+  return "local" as const;
 }
 
 function normalizeBaseUrl(input: string, port: string) {
@@ -110,7 +116,7 @@ function hasRole(role: string | undefined, allowed: string[]) {
 
 export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
   const [config, setConfig] = React.useState<ServerConfig | null>(loadConfig());
-  const [configDraft, setConfigDraft] = React.useState({ serverUrl: config?.baseUrl ?? "", serverName: config?.serverName ?? "Servidor Taberna", port: "8000" });
+  const [configDraft, setConfigDraft] = React.useState({ mode: config?.mode ?? inferMode(config?.baseUrl), serverUrl: config?.baseUrl ?? "", serverName: config?.serverName ?? "Servidor Taberna", port: "8000" });
   const [token, setToken] = React.useState<string | null>(localStorage.getItem(TOKEN_KEY));
   const [user, setUser] = React.useState<User | null>(null);
   const [snapshot, setSnapshot] = React.useState<Snapshot | null>(null);
@@ -143,7 +149,7 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
   }, []);
 
   React.useEffect(() => {
-    if (config) setConfigDraft((current) => ({ ...current, serverUrl: config.baseUrl, serverName: config.serverName }));
+    if (config) setConfigDraft((current) => ({ ...current, mode: config.mode ?? inferMode(config.baseUrl), serverUrl: config.baseUrl, serverName: config.serverName }));
   }, [config]);
 
   React.useEffect(() => {
@@ -152,7 +158,7 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
   }, [config?.baseUrl, token]);
 
   async function testConnection() {
-    const url = normalizeBaseUrl(configDraft.serverUrl, configDraft.port);
+    const url = configDraft.mode === "web" ? window.location.origin : normalizeBaseUrl(configDraft.serverUrl, configDraft.port);
     if (!url) return setError("Informe o IP ou URL do servidor.");
     setLoading(true);
     setError(null);
@@ -167,9 +173,9 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
   }
 
   function saveConfig() {
-    const url = normalizeBaseUrl(configDraft.serverUrl, configDraft.port);
+    const url = configDraft.mode === "web" ? window.location.origin : normalizeBaseUrl(configDraft.serverUrl, configDraft.port);
     if (!url) return setError("Informe o IP ou URL do servidor.");
-    const next = { baseUrl: url, serverName: configDraft.serverName.trim() || "Servidor Taberna" };
+    const next = { baseUrl: url, serverName: configDraft.serverName.trim() || "Servidor Taberna", mode: configDraft.mode };
     localStorage.setItem(CONFIG_KEY, JSON.stringify(next));
     setConfig(next);
     setStage(token ? "home" : "login");
@@ -462,11 +468,20 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
             <div>
               <div style={{ fontSize: 12, letterSpacing: 1.2, textTransform: "uppercase", color: "#93c5fd", fontWeight: 800 }}>Configurar Servidor</div>
               <h2 style={{ margin: 0 }}>Primeiro acesso</h2>
+              <p style={{ margin: "6px 0 0", color: "#cbd5e1", fontSize: 13 }}>Escolha `Local` para usar o IP do PC na mesma rede. Escolha `Web` para usar a URL pública do Render.</p>
             </div>
           </div>
           <div style={{ display: "grid", gap: 12 }}>
-            <label style={{ display: "grid", gap: 6 }}>IP do Servidor<input value={configDraft.serverUrl} onChange={(e) => setConfigDraft((state) => ({ ...state, serverUrl: e.target.value }))} placeholder="192.168.0.100" style={fieldStyle} /></label>
-            <label style={{ display: "grid", gap: 6 }}>Porta<input value={configDraft.port} onChange={(e) => setConfigDraft((state) => ({ ...state, port: e.target.value }))} placeholder="8000" style={fieldStyle} /></label>
+            <div style={{ display: "grid", gap: 8 }}>
+              <small style={{ color: "#93c5fd", fontWeight: 800, textTransform: "uppercase", letterSpacing: 1 }}>Tipo de conexão</small>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <button type="button" onClick={() => setConfigDraft((state) => ({ ...state, mode: "local" }))} style={configDraft.mode === "local" ? primaryButton : secondaryButton}>Local</button>
+                <button type="button" onClick={() => setConfigDraft((state) => ({ ...state, mode: "web" }))} style={configDraft.mode === "web" ? primaryButton : secondaryButton}>Web</button>
+              </div>
+            </div>
+            {configDraft.mode === "web" ? <div style={{ ...alertStyle, borderColor: "rgba(59,130,246,0.25)", color: "#dbeafe", background: "rgba(59,130,246,0.12)" }}>Web usa a URL atual do sistema: <strong>{window.location.origin}</strong></div> : null}
+            {configDraft.mode === "local" && <><label style={{ display: "grid", gap: 6 }}>IP do Servidor<input value={configDraft.serverUrl} onChange={(e) => setConfigDraft((state) => ({ ...state, serverUrl: e.target.value }))} placeholder="192.168.0.100" style={fieldStyle} /></label><label style={{ display: "grid", gap: 6 }}>Porta<input value={configDraft.port} onChange={(e) => setConfigDraft((state) => ({ ...state, port: e.target.value }))} placeholder="8000" style={fieldStyle} /></label></>}
+            {configDraft.mode === "web" && <label style={{ display: "grid", gap: 6 }}>URL pública<input value={window.location.origin} readOnly style={fieldStyle} /></label>}
             <label style={{ display: "grid", gap: 6 }}>Nome do Servidor<input value={configDraft.serverName} onChange={(e) => setConfigDraft((state) => ({ ...state, serverName: e.target.value }))} placeholder="Servidor Taberna" style={fieldStyle} /></label>
             {error && <div style={alertStyle}>{error}</div>}
             {message && <div style={{ ...alertStyle, borderColor: "rgba(34,197,94,0.25)", color: "#dcfce7", background: "rgba(34,197,94,0.12)" }}>{message}</div>}
