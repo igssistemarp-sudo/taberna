@@ -158,6 +158,8 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
   const [searchTerm, setSearchTerm] = React.useState("");
   const [selectedProducts, setSelectedProducts] = React.useState<DraftItem[]>([]);
   const [activeProductIndex, setActiveProductIndex] = React.useState<number | null>(null);
+  const [isCompact, setIsCompact] = React.useState(window.innerWidth < 768);
+  const [addPanel, setAddPanel] = React.useState<"products" | "selected">("products");
   const [customerDraft, setCustomerDraft] = React.useState("");
   const [showTransferModal, setShowTransferModal] = React.useState(false);
   const [transferTarget, setTransferTarget] = React.useState("");
@@ -172,6 +174,12 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
 
   React.useEffect(() => {
     document.title = "IGS Lanchonete PRO - Garcom";
+  }, []);
+
+  React.useEffect(() => {
+    const onResize = () => setIsCompact(window.innerWidth < 768);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
   }, []);
 
   React.useEffect(() => {
@@ -290,6 +298,7 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
     setCustomerDraft(table.customerName ?? "");
     setActiveProductIndex(null);
     setSelectedProducts([]);
+    setAddPanel("products");
     setShowAddModal(false);
     setShowTransferModal(false);
     setShowMergeModal(false);
@@ -343,10 +352,12 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
     const existing = selectedProducts.findIndex((item) => item.product.id === product.id);
     if (existing >= 0) {
       setActiveProductIndex(existing);
+      setAddPanel("selected");
       return;
     }
     setSelectedProducts((prev) => [...prev, { product, quantity: 1, note: "", showAdditions: false, selectedAdditions: [] }]);
     setActiveProductIndex(selectedProducts.length);
+    setAddPanel("selected");
   }
 
   function updateDraftQty(index: number, qty: number) {
@@ -707,18 +718,25 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
 
         {showAddModal && createPortal(
           <div style={modalBackdrop} onClick={() => setShowAddModal(false)}>
-            <div style={modalCard} onClick={(e) => e.stopPropagation()}>
+            <div style={{ ...modalCard, width: isCompact ? "min(100%, 1000px)" : modalCard.width, padding: isCompact ? 14 : 18, maxHeight: isCompact ? "96vh" : modalCard.maxHeight }} onClick={(e) => e.stopPropagation()}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                 <strong style={{ fontSize: 18 }}>Lançar Itens</strong>
                 <button onClick={() => setShowAddModal(false)} style={iconButton}><X size={18} /></button>
               </div>
-              <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1.2fr 0.9fr", minHeight: 0 }}>
+              {isCompact && (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
+                  <button type="button" onClick={() => setAddPanel("products")} style={addPanel === "products" ? primaryButton : secondaryButton}>Produtos</button>
+                  <button type="button" onClick={() => setAddPanel("selected")} style={addPanel === "selected" ? primaryButton : secondaryButton}>Selecionados ({selectedProducts.length})</button>
+                </div>
+              )}
+              <div style={{ display: "grid", gap: 12, gridTemplateColumns: isCompact ? "1fr" : "1.2fr 0.9fr", minHeight: 0 }}>
+                {(!isCompact || addPanel === "products") && (
                 <div style={{ minWidth: 0, display: "grid", gap: 10 }}>
                   <div style={{ position: "relative" }}>
                     <Search size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }} />
                     <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Buscar por nome, código ou categoria..." style={{ ...fieldStyle, paddingLeft: 36 }} />
                   </div>
-                  <div style={{ display: "grid", gap: 8, maxHeight: 360, overflow: "auto" }}>
+                  <div style={{ display: "grid", gap: 8, maxHeight: isCompact ? "56vh" : 360, overflow: "auto", paddingRight: 2 }}>
                     {filteredProducts.map((product) => {
                       const selected = selectedProducts.some((item) => item.product.id === product.id);
                       return (
@@ -733,7 +751,9 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
                     })}
                   </div>
                 </div>
-                <div style={{ minWidth: 0, display: "grid", gap: 8, alignContent: "start" }}>
+                )}
+                {(!isCompact || addPanel === "selected") && (
+                <div style={{ minWidth: 0, display: "grid", gap: 8, alignContent: "start", maxHeight: isCompact ? "60vh" : undefined, overflow: isCompact ? "auto" : "visible" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <strong>Selecionados</strong>
                     <small style={{ color: "#94a3b8" }}>{selectedProducts.length}</small>
@@ -771,6 +791,7 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
                     </div>
                   ))}
                 </div>
+                )}
               </div>
               <div style={{ marginTop: 14, display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                 <button onClick={() => setShowAddModal(false)} style={secondaryButton}>Cancelar</button>
