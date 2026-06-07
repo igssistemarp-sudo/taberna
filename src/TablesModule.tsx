@@ -71,6 +71,8 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
 
   const [cancelReason, setCancelReason] = React.useState("");
   const [cancelItemId, setCancelItemId] = React.useState<string | null>(null);
+  const [openCustomerName, setOpenCustomerName] = React.useState("");
+  const [showOpenDialog, setShowOpenDialog] = React.useState(false);
 
   React.useEffect(() => { if (initialData) setTables(initialData.tables); }, [initialData]);
 
@@ -89,7 +91,7 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
     if (!selectedTable) return;
     setLoading(true);
     try {
-      await api(`/api/tables/${selectedTable.id}/open`, { method: "PUT" });
+      await api(`/api/tables/${selectedTable.id}/open`, { method: "PUT", body: JSON.stringify({ customerName: openCustomerName || null }) });
       await reload("/api/company", {});
       const updated = await api("/api/tables");
       setTables(updated);
@@ -407,6 +409,18 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
         <h2 style={{ margin: 0 }}>Mesas</h2>
         <span style={{ color: "var(--text-dim)", fontSize: 13 }}>{tables.filter((t) => t.status !== "LIVRE").length} ocupadas · {tables.filter((t) => t.status === "LIVRE").length} livres</span>
       </div>
+      {showOpenDialog && selectedTable && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "grid", placeItems: "center", zIndex: 999 }} onClick={() => setShowOpenDialog(false)}>
+          <div style={{ background: "var(--surface)", borderRadius: 16, padding: 28, width: 340, maxWidth: "90vw" }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginTop: 0 }}>Abrir Mesa {selectedTable.name}</h3>
+            <label>Nome do cliente (opcional)<input value={openCustomerName} onChange={(e) => setOpenCustomerName(e.target.value)} autoFocus placeholder="Ex: João Silva" onKeyDown={(e) => { if (e.key === "Enter") { setShowOpenDialog(false); openTable(); } }} /></label>
+            <div style={{ display: "flex", gap: 8, marginTop: 16, justifyContent: "flex-end" }}>
+              <button className="ghost" onClick={() => setShowOpenDialog(false)}>Cancelar</button>
+              <button onClick={() => { setShowOpenDialog(false); openTable(); }}>Abrir Mesa</button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="table-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 12 }}>
         {tables.map((table) => {
           const color = statusColor[table.status] ?? "#6b7280";
@@ -414,7 +428,7 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
             <div
               key={table.id}
               onClick={() => {
-                if (table.status === "LIVRE") { setSelectedTable(table); openTable(); }
+                if (table.status === "LIVRE") { setSelectedTable(table); setOpenCustomerName(""); setShowOpenDialog(true); }
                 else { setSelectedTable(table); setOrders([]); setView("order"); loadTableOrders(); }
               }}
               style={{
