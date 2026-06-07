@@ -59,6 +59,12 @@ function inferMode(baseUrl?: string) {
   return "local" as const;
 }
 
+function resolveWebBaseUrl() {
+  const isDevFrontend = window.location.port === "5173" || window.location.port === "4173";
+  if (window.location.protocol === "https:" && !isDevFrontend) return window.location.origin;
+  return `http://${window.location.hostname}:3333`;
+}
+
 function normalizeBaseUrl(input: string, port: string) {
   const value = input.trim();
   if (!value) return "";
@@ -133,7 +139,7 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
   const isHostedWeb = window.location.protocol === "https:" && !/^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
   const activeConfig = React.useMemo(() => {
     if (!config) return null;
-    if (isHostedWeb) return { ...config, baseUrl: window.location.origin, mode: "web" as const };
+    if (config.mode === "web" || isHostedWeb) return { ...config, baseUrl: resolveWebBaseUrl(), mode: "web" as const };
     return config;
   }, [config, isHostedWeb]);
   const [configDraft, setConfigDraft] = React.useState({ mode: isHostedWeb ? "web" as const : (activeConfig?.mode ?? inferMode(activeConfig?.baseUrl)), serverUrl: activeConfig?.baseUrl ?? "", serverName: activeConfig?.serverName ?? "Servidor Taberna", port: "8000" });
@@ -179,7 +185,7 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
 
   async function testConnection() {
     const mode = isHostedWeb ? "web" : configDraft.mode;
-    const url = mode === "web" ? window.location.origin : normalizeBaseUrl(configDraft.serverUrl, configDraft.port);
+    const url = mode === "web" ? resolveWebBaseUrl() : normalizeBaseUrl(configDraft.serverUrl, configDraft.port);
     if (!url) return setError("Informe o IP ou URL do servidor.");
     setLoading(true);
     setError(null);
@@ -196,7 +202,7 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
 
   function saveConfig() {
     const mode = isHostedWeb ? "web" : configDraft.mode;
-    const url = mode === "web" ? window.location.origin : normalizeBaseUrl(configDraft.serverUrl, configDraft.port);
+    const url = mode === "web" ? resolveWebBaseUrl() : normalizeBaseUrl(configDraft.serverUrl, configDraft.port);
     if (!url) return setError("Informe o IP ou URL do servidor.");
     const next = { baseUrl: url, serverName: configDraft.serverName.trim() || "Servidor Taberna", mode };
     localStorage.setItem(CONFIG_KEY, JSON.stringify(next));
@@ -506,9 +512,9 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
                 <button type="button" onClick={() => setConfigDraft((state) => ({ ...state, mode: "web" }))} style={configDraft.mode === "web" || isHostedWeb ? primaryButton : secondaryButton}>Web</button>
               </div>
             </div>
-            {(configDraft.mode === "web" || isHostedWeb) ? <div style={{ ...alertStyle, borderColor: "rgba(59,130,246,0.25)", color: "#dbeafe", background: "rgba(59,130,246,0.12)" }}>Web usa a URL atual do sistema: <strong>{window.location.origin}</strong></div> : null}
-            {(!isHostedWeb && configDraft.mode === "local") && <><label style={{ display: "grid", gap: 6 }}>IP do Servidor<input value={configDraft.serverUrl} onChange={(e) => setConfigDraft((state) => ({ ...state, serverUrl: e.target.value }))} placeholder="192.168.0.100" style={fieldStyle} /></label><label style={{ display: "grid", gap: 6 }}>Porta<input value={configDraft.port} onChange={(e) => setConfigDraft((state) => ({ ...state, port: e.target.value }))} placeholder="8000" style={fieldStyle} /></label></>}
-            {(configDraft.mode === "web" || isHostedWeb) && <label style={{ display: "grid", gap: 6 }}>URL pública<input value={window.location.origin} readOnly style={fieldStyle} /></label>}
+            {(configDraft.mode === "web" || isHostedWeb) ? <div style={{ ...alertStyle, borderColor: "rgba(59,130,246,0.25)", color: "#dbeafe", background: "rgba(59,130,246,0.12)" }}>Web usa a API em <strong>{resolveWebBaseUrl()}</strong></div> : null}
+            {(!isHostedWeb && configDraft.mode === "local") && <><label style={{ display: "grid", gap: 6 }}>IP do Servidor<input value={configDraft.serverUrl} onChange={(e) => setConfigDraft((state) => ({ ...state, serverUrl: e.target.value }))} placeholder="192.168.0.100" style={fieldStyle} /></label><label style={{ display: "grid", gap: 6 }}>Porta<input value={configDraft.port} onChange={(e) => setConfigDraft((state) => ({ ...state, port: e.target.value }))} placeholder="3333" style={fieldStyle} /></label></>}
+            {(configDraft.mode === "web" || isHostedWeb) && <label style={{ display: "grid", gap: 6 }}>URL da API<input value={resolveWebBaseUrl()} readOnly style={fieldStyle} /></label>}
             <label style={{ display: "grid", gap: 6 }}>Nome do Servidor<input value={configDraft.serverName} onChange={(e) => setConfigDraft((state) => ({ ...state, serverName: e.target.value }))} placeholder="Servidor Taberna" style={fieldStyle} /></label>
             {error && <div style={alertStyle}>{error}</div>}
             {message && <div style={{ ...alertStyle, borderColor: "rgba(34,197,94,0.25)", color: "#dcfce7", background: "rgba(34,197,94,0.12)" }}>{message}</div>}
