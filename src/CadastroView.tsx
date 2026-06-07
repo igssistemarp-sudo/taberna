@@ -13,12 +13,10 @@ type CadastroData = {
 type CadastroProps = {
   data: CadastroData | null;
   money: (value: number) => string;
-  companyDraft: { razaoSocial: string; nomeFantasia: string; logoUrl: string; onlineMenuSlug: string; serviceFeeEnabled: boolean; serviceFeePercent: number; openingHours: string; printerKitchenIp: string; printerBarIp: string; printerCashIp: string; printerPort: number; theme: string };
-  setCompanyDraft: React.Dispatch<React.SetStateAction<{ razaoSocial: string; nomeFantasia: string; logoUrl: string; onlineMenuSlug: string; serviceFeeEnabled: boolean; serviceFeePercent: number; openingHours: string; printerKitchenIp: string; printerBarIp: string; printerCashIp: string; printerPort: number; theme: string }>>;
   mutate: (path: string, options?: RequestInit) => Promise<void>;
 };
 
-export default function CadastroView({ data, money, companyDraft, setCompanyDraft, mutate }: CadastroProps) {
+export default function CadastroView({ data, money, mutate }: CadastroProps) {
   const [section, setSection] = React.useState<"produtos" | "grupos" | "bairros" | "pagamentos" | "fornecedores" | "funcionarios" | "usuarios" | "empresa">("grupos");
   const [productDraft, setProductDraft] = React.useState({ name: "", salePriceCents: 0, costCents: 0, stockCurrent: 0, categoryId: "", printTarget: "COZINHA", active: true });
   const [groupName, setGroupName] = React.useState("");
@@ -33,8 +31,7 @@ export default function CadastroView({ data, money, companyDraft, setCompanyDraf
     ["pagamentos", "Formas de pagamento"],
     ["fornecedores", "Fornecedores"],
     ["funcionarios", "Funcionários"],
-    ["usuarios", "Usuários"],
-    ["empresa", "Empresa"]
+    ["usuarios", "Usuários"]
   ] as const;
 
   return (
@@ -123,11 +120,6 @@ export default function CadastroView({ data, money, companyDraft, setCompanyDraf
                 <section className="panel"><h3>Novo usuário</h3><div className="grid-2"><label>Nome<input value={userDraft.name} onChange={(e) => setUserDraft((state) => ({ ...state, name: e.target.value }))} /></label><label>Login<input value={userDraft.login} onChange={(e) => setUserDraft((state) => ({ ...state, login: e.target.value }))} /></label><label>Senha<input type="password" value={userDraft.password} onChange={(e) => setUserDraft((state) => ({ ...state, password: e.target.value }))} /></label><label>Perfil<select value={userDraft.role} onChange={(e) => setUserDraft((state) => ({ ...state, role: e.target.value }))}><option value="ADMIN">Administrador</option><option value="GERENTE">Gerente</option><option value="CAIXA">Caixa</option><option value="GARCOM">Garçom</option><option value="ENTREGADOR">Entregador</option><option value="COZINHA">Cozinha</option></select></label></div><label><input type="checkbox" checked={userDraft.active} onChange={(e) => setUserDraft((state) => ({ ...state, active: e.target.checked }))} /> Ativo</label><button onClick={() => mutate("/api/users", { method: "POST", body: JSON.stringify({ ...userDraft, notes: null }) })}>Salvar usuário</button></section>
                 <section className="panel"><h3>Usuários</h3><div className="table-list">{data?.users.map((item) => <div className="list-row" key={item.id}><strong>{item.name}</strong><span>{item.login}</span><span>{item.role}</span><span>{item.active ? "Ativo" : "Inativo"}</span></div>)}</div></section>
               </div>
-            ) : null}
-
-            {section === "empresa" ? (
-              <div className="panel-grid">
-                <section className="panel"><h3>Empresa</h3><div className="grid-2"><label>Razão social<input value={companyDraft.razaoSocial} onChange={(e) => setCompanyDraft((state) => ({ ...state, razaoSocial: e.target.value }))} /></label><label>Nome fantasia<input value={companyDraft.nomeFantasia} onChange={(e) => setCompanyDraft((state) => ({ ...state, nomeFantasia: e.target.value }))} /></label><label>Logo do emitente<input value={companyDraft.logoUrl} onChange={(e) => setCompanyDraft((state) => ({ ...state, logoUrl: e.target.value }))} placeholder="URL ou base64" /></label><label>Link do cardápio<input value={companyDraft.onlineMenuSlug} onChange={(e) => setCompanyDraft((state) => ({ ...state, onlineMenuSlug: e.target.value }))} /></label><label>Horário<input value={companyDraft.openingHours} onChange={(e) => setCompanyDraft((state) => ({ ...state, openingHours: e.target.value }))} /></label><label>IP cozinha<input value={companyDraft.printerKitchenIp} onChange={(e) => setCompanyDraft((state) => ({ ...state, printerKitchenIp: e.target.value }))} /></label><label>IP bar<input value={companyDraft.printerBarIp} onChange={(e) => setCompanyDraft((state) => ({ ...state, printerBarIp: e.target.value }))} /></label><label>IP caixa<input value={companyDraft.printerCashIp} onChange={(e) => setCompanyDraft((state) => ({ ...state, printerCashIp: e.target.value }))} /></label><label>Porta<input type="number" value={companyDraft.printerPort} onChange={(e) => setCompanyDraft((state) => ({ ...state, printerPort: Number(e.target.value) }))} /></label><label>Taxa de serviço<input type="number" value={companyDraft.serviceFeePercent} onChange={(e) => setCompanyDraft((state) => ({ ...state, serviceFeePercent: Number(e.target.value) }))} /></label></div><label><input type="checkbox" checked={companyDraft.serviceFeeEnabled} onChange={(e) => setCompanyDraft((state) => ({ ...state, serviceFeeEnabled: e.target.checked }))} /> Habilitar taxa de serviço</label><button onClick={() => mutate("/api/company", { method: "PUT", body: JSON.stringify(companyDraft) })}>Salvar configurações</button></section><section className="panel"><h3>Impressoras</h3><div className="table-list">{data?.printers.map((item) => <div className="list-row" key={item.id}><strong>{item.name}</strong><span>{item.type}</span><span>{item.ip}:{item.port}</span><span>{item.active ? "Ativa" : "Inativa"}</span></div>)}</div></section></div>
             ) : null}
           </div>
         </div>

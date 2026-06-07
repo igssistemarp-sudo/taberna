@@ -10,9 +10,11 @@ import {
   ChefHat,
   CircleDollarSign,
   ClipboardList,
+  Cog,
   CreditCard,
   Edit3,
   FileDown,
+  FileText,
   Fingerprint,
   Hammer,
   LayoutDashboard,
@@ -23,6 +25,7 @@ import {
   Settings,
   ShoppingCart,
   Table,
+  TrendingUp,
   Truck,
   UserRound,
   Users,
@@ -107,7 +110,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [publicCompany, setPublicCompany] = useState<Company | null>(null);
-  const [page, setPage] = useState<"dashboard" | "orders" | "tables" | "customers" | "finance" | "reports" | "settings">("dashboard");
+  const [page, setPage] = useState<"dashboard" | "products" | "delivery" | "tables" | "customers" | "caixa" | "financeiro" | "reports" | "cadastro" | "config">("dashboard");
   const [data, setData] = useState<AppData | null>(null);
   const [orderDrafts, setOrderDrafts] = useState<ItemDraft[]>([emptyDraft()]);
   const [orderType, setOrderType] = useState("MESA");
@@ -320,29 +323,35 @@ function App() {
 
   const nav = [
     ["dashboard", "Painel", LayoutDashboard],
-    ["orders", "Pedidos", ShoppingCart],
+    ["products", "Produtos", Package2],
+    ["delivery", "Delivery", ShoppingCart],
     ["tables", "Mesas", Table],
     ["customers", "Clientes", UserRound],
-    ["finance", "Financeiro", Wallet],
-    ["reports", "Relatórios", BarChart3],
-    ["settings", "Cadastro", Settings]
+    ["caixa", "Caixa", Wallet],
+    ["financeiro", "Financeiro", TrendingUp],
+    ["reports", "Relatórios", FileText],
+    ["cadastro", "Cadastro", Settings],
+    ["config", "Configuração", Cog]
   ] as const;
 
   const pageTitles: Record<typeof page, string> = {
     dashboard: "Visão Geral",
-    orders: "Pedidos",
+    products: "Produtos",
+    delivery: "Delivery",
     tables: "Mesas",
     customers: "Clientes",
-    finance: "Financeiro",
+    caixa: "Caixa",
+    financeiro: "Financeiro",
     reports: "Relatórios",
-    settings: "Cadastro"
+    cadastro: "Cadastro",
+    config: "Configuração"
   };
 
   useEffect(() => {
     document.title = `IGS Lanchonete PRO - ${pageTitles[page]}`;
   }, [page]);
 
-  return <div className="app-shell">{error && <div className="toast">{error}</div>}<aside className="sidebar"><div className="brand"><div className="logo-mark small">TB</div><div><strong>IGS Lanchonete PRO</strong><span>{data?.user.name} - {data?.user.role}</span></div></div><nav>{nav.map(([key, label, Icon]) => <button key={key} className={page === key ? "active" : ""} onClick={() => setPage(key)}><span className="sidebar-nav-icon"><Icon size={16} /></span> {label}</button>)}</nav><button className="ghost" onClick={logout}>Sair</button></aside><main className="content">{loading && <div className="loading-bar" />}<header className="topbar"><div><span>IGS Lanchonete PRO</span><h1>{pageTitles[page]}</h1></div><div className="topbar-actions"><button className="ghost" onClick={load}><Bell size={16} /> Atualizar</button><button onClick={() => setPage("orders")}><ClipboardList size={16} /> Novo pedido</button></div></header>{page === "dashboard" && <DashboardView data={data} money={money} mutate={mutate} />}{page === "orders" && <OrdersView data={data} money={money} orderType={orderType} setOrderType={setOrderType} orderTableId={orderTableId} setOrderTableId={setOrderTableId} orderCustomerId={orderCustomerId} setOrderCustomerId={setOrderCustomerId} orderNeighborhoodId={orderNeighborhoodId} setOrderNeighborhoodId={setOrderNeighborhoodId} orderWaiter={orderWaiter} setOrderWaiter={setOrderWaiter} orderNotes={orderNotes} setOrderNotes={setOrderNotes} orderDrafts={orderDrafts} setOrderDrafts={setOrderDrafts} totals={totals} createOrder={createOrder} mutate={mutate} />}{page === "tables" && <TablesView data={data} mutate={mutate} />}{page === "customers" && <CustomersView data={data} mutate={mutate} customerDraft={customerDraft} setCustomerDraft={setCustomerDraft} neighborhoodDraft={neighborhoodDraft} setNeighborhoodDraft={setNeighborhoodDraft} />}{page === "finance" && <FinanceView data={data} money={money} mutate={mutate} openingCash={openingCash} setOpeningCash={setOpeningCash} closingCash={closingCash} setClosingCash={setClosingCash} />}{page === "reports" && <ReportsView token={token} />}{page === "settings" && <CadastroView data={data} money={money} companyDraft={companyDraft} setCompanyDraft={setCompanyDraft} mutate={mutate} />}</main></div>;
+  return <div className="app-shell">{error && <div className="toast">{error}</div>}<aside className="sidebar"><div className="brand"><div className="logo-mark small">TB</div><div><strong>IGS Lanchonete PRO</strong><span>{data?.user.name} - {data?.user.role}</span></div></div><nav>{nav.map(([key, label, Icon]) => <button key={key} className={page === key ? "active" : ""} onClick={() => setPage(key)}><span className="sidebar-nav-icon"><Icon size={16} /></span> {label}</button>)}</nav><button className="ghost" onClick={logout}>Sair</button></aside><main className="content">{loading && <div className="loading-bar" />}<header className="topbar"><div><span>IGS Lanchonete PRO</span><h1>{pageTitles[page]}</h1></div><div className="topbar-actions"><button className="ghost" onClick={load}><Bell size={16} /> Atualizar</button><button onClick={() => setPage("delivery")}><ClipboardList size={16} /> Novo pedido</button></div></header>{page === "dashboard" && <DashboardView data={data} money={money} mutate={mutate} />}{page === "products" && <section className="stack"><ProductsModule data={data ? { products: data.products as any, categories: data.categories as any } : null} mutate={mutate} money={money} /></section>}{page === "delivery" && <OrdersView data={data} money={money} orderType={orderType} setOrderType={setOrderType} orderTableId={orderTableId} setOrderTableId={setOrderTableId} orderCustomerId={orderCustomerId} setOrderCustomerId={setOrderCustomerId} orderNeighborhoodId={orderNeighborhoodId} setOrderNeighborhoodId={setOrderNeighborhoodId} orderWaiter={orderWaiter} setOrderWaiter={setOrderWaiter} orderNotes={orderNotes} setOrderNotes={setOrderNotes} orderDrafts={orderDrafts} setOrderDrafts={setOrderDrafts} totals={totals} createOrder={createOrder} mutate={mutate} />}{page === "tables" && <TablesView data={data} mutate={mutate} />}{page === "customers" && <CustomersView data={data} mutate={mutate} customerDraft={customerDraft} setCustomerDraft={setCustomerDraft} neighborhoodDraft={neighborhoodDraft} setNeighborhoodDraft={setNeighborhoodDraft} />}{page === "caixa" && <FinanceView data={data} money={money} mutate={mutate} openingCash={openingCash} setOpeningCash={setOpeningCash} closingCash={closingCash} setClosingCash={setClosingCash} />}{page === "financeiro" && <FinanceiroView data={data} money={money} />}{page === "reports" && <ReportsView token={token} />}{page === "cadastro" && <CadastroView data={data} money={money} mutate={mutate} />}{page === "config" && <SettingsView data={data} money={money} companyDraft={companyDraft} setCompanyDraft={setCompanyDraft} mutate={mutate} />}</main></div>;
 }
 
 function DashboardView({ data, money, mutate }: { data: AppData | null; money: (value: number) => string; mutate: (path: string, options?: RequestInit) => Promise<void>; }) {
@@ -366,10 +375,6 @@ function DashboardView({ data, money, mutate }: { data: AppData | null; money: (
             <strong>{metric.value}</strong>
           </article>
         ))}
-      </section>
-
-      <section className="stack">
-        <ProductsModule data={data ? { products: data.products as any, categories: data.categories as any } : null} mutate={mutate} money={money} />
       </section>
 
       <section className="panel-grid">
@@ -413,6 +418,10 @@ function TablesView({ data, mutate }: { data: AppData | null; mutate: (path: str
 
 function CustomersView({ data, mutate, customerDraft, setCustomerDraft, neighborhoodDraft, setNeighborhoodDraft }: { data: AppData | null; mutate: (path: string, options?: RequestInit) => Promise<void>; customerDraft: { name: string; phone: string; whatsapp: string; neighborhoodId: string; street: string; number: string; city: string; state: string; notes: string }; setCustomerDraft: React.Dispatch<React.SetStateAction<{ name: string; phone: string; whatsapp: string; neighborhoodId: string; street: string; number: string; city: string; state: string; notes: string }>>; neighborhoodDraft: { name: string; city: string; deliveryFeeCents: number; avgDeliveryMinutes: number; active: boolean }; setNeighborhoodDraft: React.Dispatch<React.SetStateAction<{ name: string; city: string; deliveryFeeCents: number; avgDeliveryMinutes: number; active: boolean }>>; }) {
   return <div className="panel-grid"><section className="panel"><h3>Novo cliente</h3><div className="grid-2"><label>Nome<input value={customerDraft.name} onChange={(e) => setCustomerDraft((state) => ({ ...state, name: e.target.value }))} /></label><label>Telefone<input value={customerDraft.phone} onChange={(e) => setCustomerDraft((state) => ({ ...state, phone: e.target.value }))} /></label><label>WhatsApp<input value={customerDraft.whatsapp} onChange={(e) => setCustomerDraft((state) => ({ ...state, whatsapp: e.target.value }))} /></label><label>Bairro<select value={customerDraft.neighborhoodId} onChange={(e) => setCustomerDraft((state) => ({ ...state, neighborhoodId: e.target.value }))}><option value="">Sem bairro</option>{data?.neighborhoods.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>Rua<input value={customerDraft.street} onChange={(e) => setCustomerDraft((state) => ({ ...state, street: e.target.value }))} /></label><label>Número<input value={customerDraft.number} onChange={(e) => setCustomerDraft((state) => ({ ...state, number: e.target.value }))} /></label><label>Cidade<input value={customerDraft.city} onChange={(e) => setCustomerDraft((state) => ({ ...state, city: e.target.value }))} /></label><label>UF<input value={customerDraft.state} onChange={(e) => setCustomerDraft((state) => ({ ...state, state: e.target.value }))} /></label></div><label>Observações<textarea rows={3} value={customerDraft.notes} onChange={(e) => setCustomerDraft((state) => ({ ...state, notes: e.target.value }))} /></label><button onClick={() => mutate("/api/customers", { method: "POST", body: JSON.stringify(customerDraft) })}>Salvar cliente</button></section><section className="panel"><h3>Bairros e taxa de entrega</h3><div className="grid-2"><label>Nome<input value={neighborhoodDraft.name} onChange={(e) => setNeighborhoodDraft((state) => ({ ...state, name: e.target.value }))} /></label><label>Cidade<input value={neighborhoodDraft.city} onChange={(e) => setNeighborhoodDraft((state) => ({ ...state, city: e.target.value }))} /></label><label>Taxa<input type="number" value={neighborhoodDraft.deliveryFeeCents} onChange={(e) => setNeighborhoodDraft((state) => ({ ...state, deliveryFeeCents: Number(e.target.value) }))} /></label><label>Tempo medio<input type="number" value={neighborhoodDraft.avgDeliveryMinutes} onChange={(e) => setNeighborhoodDraft((state) => ({ ...state, avgDeliveryMinutes: Number(e.target.value) }))} /></label></div><button onClick={() => mutate("/api/neighborhoods", { method: "POST", body: JSON.stringify(neighborhoodDraft) })}>Salvar bairro</button></section><section className="panel"><h3>Clientes cadastrados</h3><div className="table-list">{data?.customers.map((item) => <div className="list-row" key={item.id}><strong>{item.name}</strong><span>{item.phone}</span><span>{item.neighborhood?.name ?? "-"}</span></div>)}</div></section></div>;
+}
+
+function FinanceiroView({ data, money }: { data: AppData | null; money: (value: number) => string }) {
+  return <section className="panel"><h3>Financeiro</h3><div className="summary-grid"><div className="summary-card"><span>Contas a pagar</span><strong>{money(data?.dashboard?.overduePayables ?? 0)}</strong></div><div className="summary-card"><span>A receber</span><strong>{money(data?.dashboard?.receivablesOpen ?? 0)}</strong></div><div className="summary-card"><span>Vendido hoje</span><strong>{money(data?.dashboard?.totalSoldToday ?? 0)}</strong></div></div></section>;
 }
 
 function FinanceView({ data, money, mutate, openingCash, setOpeningCash, closingCash, setClosingCash }: { data: AppData | null; money: (value: number) => string; mutate: (path: string, options?: RequestInit) => Promise<void>; openingCash: string; setOpeningCash: React.Dispatch<React.SetStateAction<string>>; closingCash: string; setClosingCash: React.Dispatch<React.SetStateAction<string>>; }) {
