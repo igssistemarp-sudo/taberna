@@ -19,6 +19,7 @@ import {
   Hammer,
   LayoutDashboard,
   LogIn,
+  LogOut,
   MapPin,
   Package2,
   Phone,
@@ -197,6 +198,7 @@ function App() {
       const result = await request("/api/auth/login", { method: "POST", body: JSON.stringify({ login, password }) });
       localStorage.setItem("taberna-token", result.token);
       setToken(result.token);
+      window.location.reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha no login");
     } finally {

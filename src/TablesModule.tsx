@@ -72,7 +72,8 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
   const [error, setError] = React.useState<string | null>(null);
 
   const [searchTerm, setSearchTerm] = React.useState("");
-  const [selectedProducts, setSelectedProducts] = React.useState<Array<{ product: ProductData; quantity: number; note: string; selectedAdditions: Array<AdditionData & { qty: number }> }>>([]);
+  const [selectedProducts, setSelectedProducts] = React.useState<Array<{ product: ProductData; quantity: number; note: string; showAdditions: boolean; selectedAdditions: Array<AdditionData & { qty: number }> }>>([]);
+  const [activeProductIndex, setActiveProductIndex] = React.useState<number | null>(null);
   const [showAddItem, setShowAddItem] = React.useState(false);
 
   const [customerSearch, setCustomerSearch] = React.useState("");
@@ -94,6 +95,8 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
   const [showOpenDialog, setShowOpenDialog] = React.useState(false);
   const [showPrintDialog, setShowPrintDialog] = React.useState(false);
   const [paidOrderId, setPaidOrderId] = React.useState<string | null>(null);
+  const [showItemMeta, setShowItemMeta] = React.useState(true);
+  const [showCancelledItems, setShowCancelledItems] = React.useState(false);
 
   React.useEffect(() => { if (initialData) setTables(mesaOnly(initialData.tables)); }, [initialData]);
 
@@ -102,8 +105,8 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
     setLoading(true);
     try {
       const data = await api(`/api/tables/${selectedTable.id}/pre-conta`);
-      setOrders(data.orders ?? []);
-    } catch (e: any) { setError(e.message); } finally { setLoading(false); }
+    setOrders(data.orders ?? []);
+  } catch (e: any) { setError(e.message); } finally { setLoading(false); }
   }
 
   React.useEffect(() => { if (selectedTable && (view === "order" || view === "payment")) loadTableOrders(); }, [selectedTable, view]);
@@ -116,7 +119,7 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
       setSelectedTable(opened);
       setTables((prev) => prev.map((t) => t.id === opened.id ? opened : t));
       await reload("/api/company", {});
-      const order = await api("/api/orders", { method: "POST", body: JSON.stringify({ type: "MESA", tableId: opened.id, items: [], payments: [] }) });
+      const order = await api("/api/orders", { method: "POST", body: JSON.stringify({ type: "MESA", tableId: opened.id, customerNameSnapshot: opened.customerName ?? null, items: [], payments: [] }) });
       setOrders([order]);
       setView("order");
     } catch (e: any) { setError(e.message); } finally { setLoading(false); }
@@ -236,13 +239,26 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
   const filteredCustomers = customerSearch ? customers.filter((c) => c.name.toLowerCase().includes(customerSearch.toLowerCase())) : customers;
 
   function selectProduct(product: ProductData) {
-    if (selectedProducts.some((sp) => sp.product.id === product.id)) return;
-    setSelectedProducts([...selectedProducts, { product, quantity: 1, note: "", selectedAdditions: [] }]);
+    const existingIndex = selectedProducts.findIndex((sp) => sp.product.id === product.id);
+    if (existingIndex >= 0) {
+      setActiveProductIndex(existingIndex);
+      return;
+    }
+    setSelectedProducts([...selectedProducts, { product, quantity: 1, note: "", showAdditions: false, selectedAdditions: [] }]);
+    setActiveProductIndex(selectedProducts.length);
   }
 
   function updateProductQty(index: number, qty: number) { const copy = [...selectedProducts]; copy[index] = { ...copy[index], quantity: Math.max(1, qty) }; setSelectedProducts(copy); }
   function updateProductNote(index: number, note: string) { const copy = [...selectedProducts]; copy[index] = { ...copy[index], note }; setSelectedProducts(copy); }
-  function removeProduct(index: number) { setSelectedProducts(selectedProducts.filter((_, i) => i !== index)); }
+  function removeProduct(index: number) {
+    setSelectedProducts((prev) => prev.filter((_, i) => i !== index));
+    setActiveProductIndex((prev) => {
+      if (prev === null) return null;
+      if (prev === index) return null;
+      if (prev > index) return prev - 1;
+      return prev;
+    });
+  }
 
   function toggleAddition(spIndex: number, add: AdditionData) {
     const copy = [...selectedProducts];
@@ -258,100 +274,218 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
     setSelectedProducts(copy);
   }
 
+  function toggleProductAdditions(index: number) {
+    const copy = [...selectedProducts];
+    copy[index] = { ...copy[index], showAdditions: !copy[index].showAdditions };
+    setSelectedProducts(copy);
+  }
+
+  function openAddItemModal() {
+    setSelectedProducts([]);
+    setSearchTerm("");
+    setActiveProductIndex(null);
+    setShowAddItem(true);
+  }
+
+  function closeAddItemModal() {
+    setSelectedProducts([]);
+    setSearchTerm("");
+    setActiveProductIndex(null);
+    setShowAddItem(false);
+  }
+
   const items = orders[0]?.items ?? [];
   const subtotal = calcTotal(items);
   const discVal = discountCents + Math.round(discountPercent / 100 * subtotal);
   const totalFinal = subtotal - discVal;
+  const activeItems = items.filter((i: any) => !i.cancelledAt);
+  const cancelledItems = items.filter((i: any) => i.cancelledAt);
+  const currentWaiterName = orders[0]?.waiter?.name ?? orders[0]?.waiterNameSnapshot ?? selectedTable?.waiterName ?? "Sem garçom";
 
   if ((view as string) === "order" && selectedTable) {
-    const isAPrazo = payments.some((p) => p.method.name.toUpperCase().includes("PRAZO"));
     return (
       <div className="stack">
         {error && <div className="toast" style={{ position: "static", marginBottom: 8 }}>{error}<button className="ghost" style={{ marginLeft: 8 }} onClick={() => setError(null)}>OK</button></div>}
         {loading && <div className="loading-bar" />}
-        <div className="row-between">
-          <div><h2 style={{ margin: 0 }}>{selectedTable.name}</h2><small style={{ color: "var(--text-muted)" }}>{statusLabel[selectedTable.status]} · {orders[0]?.createdAt ? new Date(orders[0].createdAt).toLocaleString("pt-BR") : ""}</small><div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, background: "linear-gradient(135deg, #dbeafe, #eff6ff)", borderRadius: 50, padding: "4px 14px 4px 10px", width: "fit-content", border: "1px solid #93c5fd" }}><UserRound size={14} style={{ color: "#2563eb" }} /><span style={{ fontSize: 13, fontWeight: 600, color: "#1e40af" }}>Cliente:</span><input value={selectedTable.customerName ?? ""} autoFocus={!selectedTable.customerName} onChange={async (e) => { const v = e.target.value; await api(`/api/tables/${selectedTable.id}`, { method: "PUT", body: JSON.stringify({ customerName: v || null }) }); const updated = await api("/api/tables"); setTables(updated); setSelectedTable(updated.find((t: any) => t.id === selectedTable.id) ?? null); }} style={{ background: "transparent", border: "none", color: "#1e3a5f", fontWeight: 700, fontSize: 14, padding: "2px 4px", minWidth: 100, outline: "none" }} placeholder="Digite o nome..." /></div></div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button onClick={() => setShowCancelTable(true)} style={{ background: "linear-gradient(135deg, #ef4444, #dc2626)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(239,68,68,0.3)" }}><Trash2 size={15} /> Cancelar Mesa</button>
-            <button onClick={() => { setTransferTarget(""); setTransferItemIds([]); setShowTransfer(true); }} style={{ background: "linear-gradient(135deg, #f59e0b, #d97706)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(245,158,11,0.3)" }}><ArrowLeftRight size={15} /> Transferir</button>
-            <button onClick={() => { setMergeSources([]); setShowMergeModal(true); }} style={{ background: "linear-gradient(135deg, #8b5cf6, #7c3aed)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(139,92,246,0.3)" }}><Merge size={15} /> Juntar</button>
-            <button onClick={() => { api(`/api/orders/${orders[0]?.id}/reprint`, { method: "POST" }).catch(() => {}); }} style={{ background: "linear-gradient(135deg, #06b6d4, #0891b2)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(6,182,212,0.3)" }}><Printer size={15} /> Imprimir</button>
-            <button onClick={() => setView("payment")} style={{ background: "linear-gradient(135deg, #10b981, #059669)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(16,185,129,0.3)" }}><DollarSign size={15} /> Pagamento</button>
-            <button onClick={() => { setView("grid"); setSelectedTable(null); setOrders([]); }} style={{ background: "linear-gradient(135deg, #64748b, #475569)", border: "none", borderRadius: 50, padding: "8px 18px", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(100,116,139,0.3)" }}><ChevronLeft size={15} /> Voltar</button>
-          </div>
-        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "300px 1px minmax(0, 1fr)", gap: 0, alignItems: "stretch" }}>
+          <aside className="panel" style={{ position: "sticky", top: 16, display: "grid", gap: 8, marginRight: 14, padding: "16px 18px", overflow: "hidden", minWidth: 0, background: "linear-gradient(180deg, rgba(15,23,42,0.96), rgba(30,41,59,0.92))", border: "1px solid rgba(255,255,255,0.12)", boxShadow: "0 18px 40px rgba(0,0,0,0.18)" }}>
+            <div style={{ padding: "2px 2px 4px", borderBottom: "1px solid rgba(255,255,255,0.08)", marginBottom: 2 }}>
+              <div style={{ fontSize: 11, letterSpacing: 1.2, textTransform: "uppercase", color: "rgba(226,232,240,0.55)", fontWeight: 700 }}>Menu da mesa</div>
+              <div style={{ fontSize: 12, color: "rgba(226,232,240,0.78)", marginTop: 2 }}>Ações rápidas</div>
+            </div>
+            <div>
+              <h2 style={{ margin: 0 }}>{selectedTable.name}</h2>
+              <small style={{ color: "var(--text-muted)" }}>{statusLabel[selectedTable.status]} · {orders[0]?.createdAt ? new Date(orders[0].createdAt).toLocaleString("pt-BR") : ""}</small>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, background: "linear-gradient(135deg, #dbeafe, #eff6ff)", borderRadius: 50, padding: "5px 12px 5px 10px", width: "100%", maxWidth: "100%", border: "1px solid #93c5fd", boxSizing: "border-box" }}>
+              <UserRound size={14} style={{ color: "#2563eb" }} />
+              <span style={{ fontSize: 12, fontWeight: 600, color: "#1e40af" }}>Cliente:</span>
+              <input value={selectedTable.customerName ?? ""} autoFocus={!selectedTable.customerName} onChange={async (e) => { const v = e.target.value; await api(`/api/tables/${selectedTable.id}`, { method: "PUT", body: JSON.stringify({ customerName: v || null }) }); await reload("/api/company", {}); const updated = await api("/api/tables"); setTables(updated); setSelectedTable(updated.find((t: any) => t.id === selectedTable.id) ?? null); }} style={{ background: "transparent", border: "none", color: "#1e3a5f", fontWeight: 700, fontSize: 13, padding: "1px 4px", minWidth: 0, flex: 1, outline: "none" }} placeholder="Digite o nome..." />
+            </div>
+            <div style={{ display: "grid", gap: 7 }}>
+              <button type="button" onClick={openAddItemModal} style={{ background: "linear-gradient(135deg, #10b981, #059669)", border: 0, borderRadius: 50, padding: "7px 8px 7px 18px", color: "#fff", fontWeight: 700, fontSize: 11.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 7, minHeight: 32, width: "100%" }}><Plus size={12} /> Lançar Item</button>
+              <button type="button" onClick={() => setShowCancelTable(true)} style={{ background: "linear-gradient(135deg, #ef4444, #dc2626)", border: 0, borderRadius: 50, padding: "7px 8px 7px 18px", color: "#fff", fontWeight: 700, fontSize: 11.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 7, minHeight: 32, width: "100%" }}><Trash2 size={12} /> Cancelar Mesa</button>
+              <button type="button" onClick={() => { setError(null); setTransferItemIds([]); setTransferTarget(""); setShowTransfer(true); }} style={{ background: "linear-gradient(135deg, #f59e0b, #d97706)", border: 0, borderRadius: 50, padding: "7px 8px 7px 18px", color: "#fff", fontWeight: 700, fontSize: 11.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 7, minHeight: 32, width: "100%" }}><ArrowLeftRight size={12} /> Transferir</button>
+              <button type="button" onClick={() => { setError(null); setMergeSources([]); setShowMergeModal(true); }} style={{ background: "linear-gradient(135deg, #8b5cf6, #7c3aed)", border: 0, borderRadius: 50, padding: "7px 8px 7px 18px", color: "#fff", fontWeight: 700, fontSize: 11.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 7, minHeight: 32, width: "100%" }}><Merge size={12} /> Juntar</button>
+              <button type="button" onClick={() => { api(`/api/orders/${orders[0]?.id}/reprint`, { method: "POST" }).catch(() => {}); }} style={{ background: "linear-gradient(135deg, #06b6d4, #0891b2)", border: 0, borderRadius: 50, padding: "7px 8px 7px 18px", color: "#fff", fontWeight: 700, fontSize: 11.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 7, minHeight: 32, width: "100%" }}><Printer size={12} /> Imprimir</button>
+              <button type="button" onClick={() => setView("payment")} style={{ background: "linear-gradient(135deg, #10b981, #059669)", border: 0, borderRadius: 50, padding: "7px 8px 7px 18px", color: "#fff", fontWeight: 700, fontSize: 11.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 7, minHeight: 32, width: "100%" }}><DollarSign size={12} /> Conta</button>
+              <button type="button" onClick={() => { setShowTransfer(false); setShowMergeModal(false); setTransferItemIds([]); setTransferTarget(""); setMergeSources([]); setView("grid"); setSelectedTable(null); setOrders([]); }} style={{ background: "linear-gradient(135deg, #64748b, #475569)", border: 0, borderRadius: 50, padding: "7px 8px 7px 18px", color: "#fff", fontWeight: 700, fontSize: 11.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 7, minHeight: 32, width: "100%" }}><ChevronLeft size={12} /> Voltar</button>
+            </div>
+          </aside>
 
-        <section className="panel">
-          <div className="row-between"><h3>Itens</h3><button onClick={() => setShowAddItem(true)}><Plus size={16} /> Lançar Item</button></div>
-          <div className="table-list">
-            {items.filter((i: any) => !i.cancelledAt).map((item: any, idx: number) => (
-              <div className="list-row" key={item.id ?? idx}>
-                <strong>{item.nameSnapshot}</strong>
-                <span>{item.quantity}x {money(item.unitPriceCents)}</span>
-                <span>{item.note && <small style={{ color: "#b45309", background: "#fef3c7", fontWeight: 800, fontSize: 13, padding: "2px 10px", borderRadius: 6, textTransform: "uppercase", letterSpacing: "0.3px" }}>{item.note}</small>}</span>
-                <span>{money(item.totalCents)}</span>
-                <button className="ghost danger" onClick={() => { setCancelItemId(item.id); setCancelReason(""); }}><Trash2 size={14} /></button>
-              </div>
-            ))}
-            {!items.filter((i: any) => !i.cancelledAt).length && <small style={{ color: "var(--text-dim)", padding: 12 }}>Nenhum item lançado.</small>}
-          </div>
-          <div style={{ textAlign: "right", marginTop: 12, fontWeight: 700, fontSize: 18 }}>Total: {money(subtotal)}</div>
-        </section>
+          <div aria-hidden="true" style={{ width: 1, alignSelf: "stretch", margin: "16px 0", background: "linear-gradient(180deg, transparent, rgba(255,255,255,0.88), rgba(255,255,255,0.35), transparent)", boxShadow: "0 0 12px rgba(255,255,255,0.18)" }} />
 
-        {showAddItem && (
-          <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.6)", zIndex: 998, display: "grid", placeItems: "center", backdropFilter: "blur(4px)" }} onClick={() => { if (!selectedProducts.length) setShowAddItem(false); }}>
-            <div style={{ background: "#fff", borderRadius: 20, width: 740, maxWidth: "96vw", maxHeight: "90vh", display: "flex", flexDirection: "column", boxShadow: "0 25px 80px rgba(37,99,235,0.15)", overflow: "hidden" }} onClick={(e) => e.stopPropagation()}>
-              <div className="row-between" style={{ padding: "16px 24px", borderBottom: "1px solid #e2e8f0", background: "#f8fafc" }}>
-                <h3 style={{ margin: 0, fontSize: 17, color: "#1e293b" }}><Package2 size={18} style={{ marginRight: 8, color: "#2563eb" }} />Lançar Itens</h3>
-                <button className="ghost" onClick={() => setShowAddItem(false)} style={{ borderRadius: 10, padding: 6 }}><X size={18} /></button>
+          <section className="panel" style={{ minWidth: 0, marginLeft: 16, background: "linear-gradient(180deg, rgba(15,23,42,0.96), rgba(30,41,59,0.92))", border: "1px solid rgba(255,255,255,0.12)", boxShadow: "0 18px 40px rgba(0,0,0,0.18)" }}>
+            <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
+              <div>
+                <h3 style={{ marginBottom: 2 }}>Itens</h3>
+                <small style={{ color: "var(--text-dim)", fontSize: 12 }}>{activeItems.length} itens lançados</small>
               </div>
-              <div style={{ padding: "12px 24px", borderBottom: "1px solid #e2e8f0" }}>
-                <div style={{ position: "relative" }}>
-                  <Search size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }} />
-                  <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Buscar por nome ou código..." autoFocus style={{ width: "100%", padding: "10px 14px 10px 36px", borderRadius: 10, border: "2px solid #e2e8f0", fontSize: 14, outline: "none", boxSizing: "border-box", background: "#fff", transition: "border-color 0.15s" }} onFocus={(e) => e.target.style.borderColor = "#2563eb"} onBlur={(e) => e.target.style.borderColor = "#e2e8f0"} />
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                <button onClick={() => setShowItemMeta((v) => !v)} style={{ background: showItemMeta ? "linear-gradient(135deg, rgba(59,130,246,0.35), rgba(37,99,235,0.25))" : "rgba(255,255,255,0.06)", color: "#e2e8f0", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 999, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{showItemMeta ? "Ocultar garçom/horário" : "Mostrar garçom/horário"}</button>
+                <span style={{ background: "rgba(255,255,255,0.06)", color: "#e2e8f0", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 999, padding: "6px 12px", fontSize: 12, fontWeight: 700 }}>Toque duplo para editar</span>
+              </div>
+            </div>
+            <div style={{ display: "grid", gap: 10, maxHeight: "calc(100vh - 310px)", overflowY: "auto", paddingRight: 8, scrollbarGutter: "stable" }}>
+              {activeItems.map((item: any, idx: number) => (
+                <div key={item.id ?? idx} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto auto auto", gap: 12, alignItems: "center", padding: "14px 16px", borderRadius: 16, background: "linear-gradient(180deg, rgba(71,85,105,0.58), rgba(71,85,105,0.38))", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.05)" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <strong style={{ color: "#f8fafc", fontSize: 14, display: "block" }}>{item.nameSnapshot}</strong>
+                    {showItemMeta && (
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                        <span style={{ background: "rgba(255,255,255,0.08)", color: "#dbeafe", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 999, padding: "3px 8px", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>Garçom: {currentWaiterName}</span>
+                        <span style={{ background: "rgba(255,255,255,0.08)", color: "#dbeafe", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 999, padding: "3px 8px", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>{item.createdAt ? new Date(item.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "--:--"}</span>
+                      </div>
+                    )}
+                  </div>
+                  <span style={{ color: "#cbd5e1", fontSize: 13, whiteSpace: "nowrap" }}>{item.quantity}x {money(item.unitPriceCents)}</span>
+                  <span>{item.note && <small style={{ color: "#78350f", background: "linear-gradient(135deg, #fef3c7, #fde68a)", border: "1px solid rgba(180,83,9,0.18)", fontWeight: 800, fontSize: 12, padding: "3px 10px", borderRadius: 999, textTransform: "uppercase", letterSpacing: "0.3px", whiteSpace: "nowrap" }}>Obs: {item.note}</small>}</span>
+                  <span style={{ color: "#dbeafe", fontWeight: 700, whiteSpace: "nowrap" }}>{money(item.totalCents)}</span>
+                  <button className="ghost danger" onClick={() => { setCancelItemId(item.id); setCancelReason(""); }} style={{ width: 30, height: 30, padding: 0, borderRadius: 999, display: "grid", placeItems: "center" }}><Trash2 size={13} /></button>
                 </div>
-              </div>
-              <div style={{ flex: 1, overflow: "auto", padding: "12px 24px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, background: "#f8fafc" }}>
-                {filteredProducts.map((p) => {
-                  const isSelected = selectedProducts.some((sp) => sp.product.id === p.id);
-                  return (
-                    <button key={p.id} onClick={() => { if (!isSelected) selectProduct(p); else removeProduct(selectedProducts.findIndex((sp) => sp.product.id === p.id)); }} style={{ display: "flex", gap: 10, alignItems: "center", padding: "10px 14px", borderRadius: 12, border: isSelected ? "2px solid #2563eb" : "1px solid #e2e8f0", background: isSelected ? "#eff6ff" : "#fff", cursor: "pointer", textAlign: "left", fontSize: 13, transition: "all 0.12s", boxShadow: isSelected ? "0 2px 8px rgba(37,99,235,0.1)" : "none" }}>
-                      <span style={{ color: "#94a3b8", fontWeight: 700, minWidth: 32, fontSize: 12 }}>#{p.code}</span>
-                      <div style={{ flex: 1 }}><strong style={{ display: "block", fontSize: 14, color: "#1e293b" }}>{p.name}</strong><small style={{ color: "#94a3b8" }}>{p.category?.name ?? ""}</small></div>
-                      <span style={{ fontWeight: 700, color: "#2563eb", whiteSpace: "nowrap", fontSize: 14 }}>{money(p.salePriceCents)}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              {selectedProducts.length > 0 && (
-                <div style={{ borderTop: "1px solid #e2e8f0", padding: "16px 24px", background: "#fff" }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    {selectedProducts.map((sp, idx) => (
-                      <div key={sp.product.id} style={{ background: "#f8fafc", borderRadius: 12, padding: 14, border: "1px solid #e2e8f0" }}>
-                        <div className="row-between"><strong style={{ fontSize: 15, color: "#1e293b" }}>{sp.product.name}</strong><button className="ghost danger" onClick={() => removeProduct(idx)} style={{ padding: 4 }}><X size={16} /></button></div>
-                        <div style={{ display: "flex", gap: 12, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
-                          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "#475569" }}>Qtd<input type="number" value={sp.quantity} onChange={(e) => updateProductQty(idx, Number(e.target.value))} min={1} style={{ width: 58, padding: "6px 10px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 14, textAlign: "center", background: "#fff" }} /></label>
-                          <input value={sp.note} onChange={(e) => updateProductNote(idx, e.target.value)} placeholder="Obs: sem cebola, bem passado..." style={{ flex: 1, minWidth: 160, padding: "6px 10px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13, background: "#fff" }} />
-                          <span style={{ fontWeight: 700, color: "#2563eb", fontSize: 16, marginLeft: "auto", whiteSpace: "nowrap" }}>{money(sp.quantity * sp.product.salePriceCents)}</span>
+              ))}
+              {!activeItems.length && <small style={{ color: "var(--text-dim)", padding: 12 }}>Nenhum item lançado.</small>}
+            </div>
+            {cancelledItems.length > 0 && (
+              <div style={{ marginTop: 14, borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 12 }}>
+                <button onClick={() => setShowCancelledItems((v) => !v)} style={{ background: "rgba(239,68,68,0.12)", color: "#fecaca", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 999, padding: "6px 12px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>
+                  {showCancelledItems ? "Ocultar cancelados" : `Ver cancelados (${cancelledItems.length})`}
+                </button>
+                {showCancelledItems && (
+                  <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                    {cancelledItems.map((item: any) => (
+                      <div key={item.id} style={{ padding: "12px 14px", borderRadius: 14, background: "linear-gradient(180deg, rgba(127,29,29,0.45), rgba(69,10,10,0.36))", border: "1px solid rgba(248,113,113,0.18)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <strong style={{ color: "#fee2e2", display: "block" }}>{item.nameSnapshot}</strong>
+                          <small style={{ color: "#fecaca" }}>{item.cancelledReason ?? "Cancelado"} · {item.cancelledAt ? new Date(item.cancelledAt).toLocaleString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : ""}</small>
                         </div>
-                        <div style={{ marginTop: 10 }}>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                            {additions.filter((a) => a.active).map((add) => {
-                              const sel = sp.selectedAdditions.find((sa) => sa.id === add.id);
-                              return (
-                                <button key={add.id} onClick={() => toggleAddition(idx, add)} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, padding: "5px 12px", borderRadius: 20, border: sel ? "2px solid #2563eb" : "1px solid #cbd5e1", background: sel ? "#eff6ff" : "#fff", color: sel ? "#1e40af" : "#475569", fontWeight: sel ? 700 : 400, cursor: "pointer", transition: "all 0.1s" }}>
-                                  {add.name} {sel ? `(${sel.qty}x)` : ""} <span style={{ opacity: 0.5 }}>{money(add.valueCents)}</span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
+                        <span style={{ color: "#fca5a5", fontWeight: 800, whiteSpace: "nowrap" }}>-{money(item.totalCents)}</span>
                       </div>
                     ))}
                   </div>
-                  <button onClick={addItems} style={{ marginTop: 14, width: "100%", padding: "12px", background: "linear-gradient(135deg, #2563eb, #1d4ed8)", color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 14px rgba(37,99,235,0.3)" }}><Plus size={18} /> Confirmar {selectedProducts.length} item(ns) — {money(selectedProducts.reduce((s, sp) => s + sp.quantity * sp.product.salePriceCents + sp.selectedAdditions.reduce((a, ad) => a + ad.qty * ad.valueCents, 0), 0))}</button>
+                )}
+              </div>
+            )}
+            <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
+              <div style={{ background: "linear-gradient(135deg, rgba(37,99,235,0.24), rgba(16,185,129,0.16))", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16, padding: "10px 14px", fontWeight: 800, fontSize: 17, color: "#fff" }}>Total: {money(subtotal)}</div>
+            </div>
+          </section>
+        </div>
+
+        {showAddItem && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.6)", zIndex: 998, display: "grid", placeItems: "center", backdropFilter: "blur(4px)" }} onClick={closeAddItemModal}>
+            <div style={{ background: "#fff", borderRadius: 20, width: 1100, maxWidth: "98vw", maxHeight: "92vh", display: "flex", flexDirection: "column", boxShadow: "0 25px 80px rgba(37,99,235,0.15)", overflow: "hidden" }} onClick={(e) => e.stopPropagation()}>
+              <div className="row-between" style={{ padding: "16px 24px", borderBottom: "1px solid #e2e8f0", background: "#f8fafc" }}>
+                <h3 style={{ margin: 0, fontSize: 17, color: "#1e293b" }}><Package2 size={18} style={{ marginRight: 8, color: "#2563eb" }} />Lançar Itens</h3>
+                <button className="ghost" onClick={closeAddItemModal} style={{ borderRadius: 10, padding: 6 }}><X size={18} /></button>
+              </div>
+              <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "1.25fr 0.95fr", background: "#f8fafc" }}>
+                <div style={{ minWidth: 0, borderRight: "1px solid #e2e8f0", display: "flex", flexDirection: "column", minHeight: 0 }}>
+                  <div style={{ padding: "12px 24px", borderBottom: "1px solid #e2e8f0" }}>
+                    <div style={{ position: "relative" }}>
+                      <Search size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }} />
+                      <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Buscar por nome ou código..." autoFocus style={{ width: "100%", padding: "10px 14px 10px 36px", borderRadius: 10, border: "2px solid #e2e8f0", fontSize: 14, outline: "none", boxSizing: "border-box", background: "#fff" }} />
+                    </div>
+                  </div>
+                  <div style={{ flex: 1, overflow: "auto", padding: "12px 24px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    {filteredProducts.map((p) => {
+                      const isSelected = selectedProducts.some((sp) => sp.product.id === p.id);
+                      return (
+                        <button key={p.id} onClick={() => { if (!isSelected) selectProduct(p); else removeProduct(selectedProducts.findIndex((sp) => sp.product.id === p.id)); }} style={{ display: "flex", gap: 10, alignItems: "center", padding: "10px 14px", borderRadius: 12, border: isSelected ? "2px solid #2563eb" : "1px solid #e2e8f0", background: isSelected ? "#eff6ff" : "#fff", cursor: "pointer", textAlign: "left", fontSize: 13 }}>
+                          <span style={{ color: "#94a3b8", fontWeight: 700, minWidth: 32, fontSize: 12 }}>#{p.code}</span>
+                          <div style={{ flex: 1 }}><strong style={{ display: "block", fontSize: 14, color: "#1e293b" }}>{p.name}</strong><small style={{ color: "#94a3b8" }}>{p.category?.name ?? ""}</small></div>
+                          <span style={{ fontWeight: 700, color: "#2563eb", whiteSpace: "nowrap", fontSize: 14 }}>{money(p.salePriceCents)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              )}
+
+                <div style={{ display: "flex", flexDirection: "column", minHeight: 0, background: "#fff" }}>
+                  <div style={{ padding: "12px 18px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, borderBottom: "1px solid #e2e8f0", background: "linear-gradient(180deg, #fff, #f8fbff)", boxShadow: "inset 0 -1px 0 rgba(255,255,255,0.8)" }}>
+                    <small style={{ color: "#334155", fontWeight: 800 }}>{selectedProducts.length} item(ns) selecionado(s)</small>
+                    <strong style={{ color: "#0f172a", fontSize: 14, background: "#eff6ff", border: "1px solid rgba(37,99,235,0.18)", borderRadius: 999, padding: "5px 10px" }}>Subtotal: {money(selectedProducts.reduce((sum, sp) => sum + (sp.quantity * sp.product.salePriceCents), 0))}</strong>
+                  </div>
+
+                  <div style={{ flex: 1, overflow: "auto", padding: 12, display: "grid", gap: 8 }}>
+                    {selectedProducts.length === 0 && <div style={{ padding: 18, color: "#64748b", textAlign: "center", border: "1px dashed #cbd5e1", borderRadius: 12, background: "#f8fafc" }}>Nenhum item selecionado.</div>}
+                    {selectedProducts.map((sp, idx) => (
+                      <div key={sp.product.id} style={{ background: idx === activeProductIndex ? "linear-gradient(180deg, #f8fbff, #ffffff)" : "#fff", borderRadius: 12, padding: 12, border: idx === activeProductIndex ? "1px solid #93c5fd" : "1px solid #e2e8f0", boxShadow: idx === activeProductIndex ? "0 10px 24px rgba(37,99,235,0.10)" : "none" }}>
+                        <div className="row-between" style={{ cursor: "pointer" }} onClick={() => setActiveProductIndex(idx)}>
+                          <div style={{ minWidth: 0 }}>
+                            <strong style={{ fontSize: 14, color: "#1e293b", display: "block" }}>{sp.product.name}</strong>
+                            <small style={{ color: "#64748b" }}>{sp.quantity}x · {money(sp.quantity * sp.product.salePriceCents)}</small>
+                          </div>
+                          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                            <button className="item-action-button obs" onClick={(e) => { e.stopPropagation(); setActiveProductIndex(idx); }}>Obs</button>
+                            <button className={`item-action-button options${sp.selectedAdditions.length ? " active" : ""}`} onClick={(e) => { e.stopPropagation(); setActiveProductIndex(idx); toggleProductAdditions(idx); }}>{sp.selectedAdditions.length ? `Opcionais (${sp.selectedAdditions.length})` : "Opcionais"}</button>
+                            <button className="item-action-button remove" onClick={(e) => { e.stopPropagation(); removeProduct(idx); }}><X size={15} /></button>
+                          </div>
+                        </div>
+
+                        {idx === activeProductIndex && (
+                          <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: "#475569" }}>Qtd<input type="number" value={sp.quantity} onChange={(e) => updateProductQty(idx, Number(e.target.value))} min={1} style={{ width: 54, padding: "5px 8px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13, textAlign: "center", background: "#fff" }} /></label>
+                              <input value={sp.note} onChange={(e) => updateProductNote(idx, e.target.value)} placeholder="Obs: sem cebola, bem passado..." style={{ flex: 1, minWidth: 150, padding: "6px 10px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 12, background: "#fff" }} />
+                            </div>
+                            <button onClick={() => toggleProductAdditions(idx)} style={{ alignSelf: "flex-start", background: sp.showAdditions ? "#eef2ff" : "#fff", color: "#0f172a", border: "1px solid rgba(37,99,235,0.22)", borderRadius: 999, padding: "5px 10px", fontSize: 12, fontWeight: 900, cursor: "pointer" }}>
+                              Opcionais {sp.selectedAdditions.length ? `(${sp.selectedAdditions.length})` : ""}
+                            </button>
+                            {sp.showAdditions && (
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                {additions.filter((a) => a.active).map((add) => {
+                                  const sel = sp.selectedAdditions.find((sa) => sa.id === add.id);
+                                  return (
+                                    <button key={add.id} onClick={() => toggleAddition(idx, add)} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11.5, padding: "4px 10px", borderRadius: 18, border: sel ? "1px solid rgba(37,99,235,0.35)" : "1px solid #cbd5e1", background: sel ? "linear-gradient(135deg, rgba(59,130,246,0.16), rgba(37,99,235,0.08))" : "#fff", color: sel ? "#1d4ed8" : "#475569", cursor: "pointer", fontWeight: sel ? 800 : 600 }}>
+                                      {add.name} {sel ? `(${sel.qty}x)` : ""} <span style={{ opacity: 0.5 }}>{money(add.valueCents)}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                            {sp.selectedAdditions.length > 0 && (
+                              <div style={{ display: "grid", gap: 6 }}>
+                                {sp.selectedAdditions.map((add) => (
+                                  <div key={add.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                    <small style={{ color: "#64748b", fontSize: 11.5 }}>{add.name}</small>
+                                    <input type="number" min={1} value={add.qty} onChange={(e) => updateAddQty(idx, add.id, Number(e.target.value))} style={{ width: 56, padding: "4px 8px", borderRadius: 8, border: "1px solid #cbd5e1" }} />
+                                    <small style={{ color: "#64748b", fontSize: 11.5 }}>{money(add.valueCents)}</small>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ borderTop: "1px solid #e2e8f0", padding: "12px 18px", background: "linear-gradient(180deg, #fff, #f8fbff)", position: "sticky", bottom: 0 }}>
+                    <button onClick={addItems} style={{ width: "100%", padding: "12px", background: "linear-gradient(135deg, #1d4ed8, #2563eb)", color: "#fff", border: "none", borderRadius: 14, fontSize: 14, fontWeight: 900, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 12px 24px rgba(37,99,235,0.18)" }}><Plus size={17} /> Confirmar itens</button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -382,29 +516,31 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
 
         {showTransfer && selectedTable && (
           <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.6)", zIndex: 998, display: "grid", placeItems: "center", backdropFilter: "blur(4px)" }} onClick={() => setShowTransfer(false)}>
-            <div style={{ background: "#fff", borderRadius: 20, width: 520, maxWidth: "96vw", maxHeight: "90vh", display: "flex", flexDirection: "column", boxShadow: "0 25px 80px rgba(0,0,0,0.2)", overflow: "hidden" }} onClick={(e) => e.stopPropagation()}>
-              <div className="row-between" style={{ padding: "16px 24px", borderBottom: "1px solid #e2e8f0", background: "#f8fafc" }}>
-                <h3 style={{ margin: 0, fontSize: 17, color: "#1e293b" }}><ArrowLeftRight size={18} style={{ marginRight: 8, color: "#f59e0b" }} />Transferir Itens</h3>
-                <button className="ghost" onClick={() => setShowTransfer(false)} style={{ borderRadius: 10, padding: 6 }}><X size={18} /></button>
+            <div style={{ background: "linear-gradient(135deg, #0f172a, #1d4ed8)", borderRadius: 22, width: 560, maxWidth: "94vw", maxHeight: "90vh", display: "flex", flexDirection: "column", boxShadow: "0 25px 80px rgba(37,99,235,0.4)", color: "#fff", overflow: "hidden" }} onClick={(e) => e.stopPropagation()}>
+              <div style={{ padding: "26px 24px 18px", textAlign: "center" }}>
+                <div style={{ width: 56, height: 56, borderRadius: "50%", background: "rgba(255,255,255,0.12)", display: "grid", placeItems: "center", margin: "0 auto 12px", border: "1px solid rgba(255,255,255,0.18)" }}>
+                  <ArrowLeftRight size={26} style={{ color: "#fff" }} />
+                </div>
+                <h3 style={{ margin: "0 0 4px", fontSize: 24 }}>Transferir Itens</h3>
+                <p style={{ margin: 0, opacity: 0.82, fontSize: 14 }}>Escolha os itens e a mesa de destino.</p>
               </div>
-              <div style={{ flex: 1, overflow: "auto", padding: "16px 24px" }}>
-                <p style={{ fontSize: 13, color: "#475569", margin: "0 0 12px" }}>Selecione os itens para transferir de <strong>{selectedTable.name}</strong>:</p>
+              <div style={{ flex: 1, overflow: "auto", padding: "0 24px 20px", display: "grid", gap: 8 }}>
+                <p style={{ margin: 0, color: "rgba(255,255,255,0.75)", fontSize: 13 }}>Selecione os itens que deseja mover para outra mesa.</p>
                 {items.filter((i: any) => !i.cancelledAt).map((item: any, idx: number) => {
                   const checked = transferItemIds.includes(item.id);
                   return (
-                    <label key={item.id ?? idx} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 10, border: checked ? "2px solid #f59e0b" : "1px solid #e2e8f0", background: checked ? "#fffbeb" : "#fff", cursor: "pointer", marginBottom: 6 }}>
-                      <input type="checkbox" checked={checked} onChange={() => setTransferItemIds((prev) => prev.includes(item.id) ? prev.filter((id) => id !== item.id) : [...prev, item.id])} style={{ accentColor: "#f59e0b" }} />
-                      <strong style={{ flex: 1, fontSize: 14, color: "#1e293b" }}>{item.nameSnapshot}</strong>
-                      <span style={{ fontSize: 13, color: "#64748b" }}>{item.quantity}x</span>
-                      <span style={{ fontWeight: 700, color: "#f59e0b", fontSize: 14 }}>{money(item.totalCents)}</span>
+                    <label key={item.id ?? idx} style={{ display: "flex", alignItems: "center", gap: 10, padding: 12, borderRadius: 14, border: checked ? "2px solid rgba(255,255,255,0.35)" : "1px solid rgba(255,255,255,0.12)", background: checked ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.08)", cursor: "pointer" }}>
+                      <input type="checkbox" checked={checked} onChange={() => setTransferItemIds((prev) => prev.includes(item.id) ? prev.filter((id) => id !== item.id) : [...prev, item.id])} />
+                      <strong style={{ flex: 1, color: "#fff" }}>{item.nameSnapshot}</strong>
+                      <span style={{ color: "#dbeafe", fontWeight: 800 }}>{money(item.totalCents)}</span>
                     </label>
                   );
                 })}
-                <label style={{ display: "block", marginTop: 16, fontSize: 13, fontWeight: 600, color: "#475569" }}>Mesa destino<select value={transferTarget} onChange={(e) => setTransferTarget(e.target.value)} style={{ display: "block", width: "100%", marginTop: 4, padding: "10px 14px", borderRadius: 10, border: "1px solid #cbd5e1", fontSize: 14, background: "#fff" }}><option value="">Selecione...</option>{tables.filter((t) => t.id !== selectedTable.id).map((t) => <option key={t.id} value={t.id}>Mesa {t.name} ({statusLabel[t.status]})</option>)}</select></label>
+                <label style={{ color: "#fff" }}>Mesa destino<select value={transferTarget} onChange={(e) => setTransferTarget(e.target.value)} style={{ background: "rgba(255,255,255,0.95)", color: "#0f172a" }}><option value="">Selecione...</option>{tables.filter((t) => t.id !== selectedTable.id).map((t) => <option key={t.id} value={t.id}>Mesa {t.name} ({statusLabel[t.status]})</option>)}</select></label>
               </div>
-              <div style={{ padding: "16px 24px", borderTop: "1px solid #e2e8f0", display: "flex", gap: 10, justifyContent: "flex-end" }}>
-                <button className="ghost" onClick={() => setShowTransfer(false)} style={{ borderRadius: 10, padding: "10px 20px" }}>Cancelar</button>
-                <button disabled={!transferTarget || !transferItemIds.length} onClick={transferItems} style={{ background: !transferTarget || !transferItemIds.length ? "#cbd5e1" : "linear-gradient(135deg, #f59e0b, #d97706)", color: "#fff", border: "none", borderRadius: 10, padding: "10px 24px", fontSize: 14, fontWeight: 700, cursor: !transferTarget || !transferItemIds.length ? "default" : "pointer" }}><ArrowLeftRight size={16} /> Transferir {transferItemIds.length} item(ns)</button>
+              <div style={{ padding: "16px 24px 24px", display: "flex", gap: 10, justifyContent: "center" }}>
+                <button type="button" className="ghost" onClick={() => setShowTransfer(false)} style={{ color: "rgba(255,255,255,0.9)", border: "1px solid rgba(255,255,255,0.18)", borderRadius: 14, padding: "11px 24px", fontSize: 14, background: "rgba(255,255,255,0.06)" }}>Cancelar</button>
+                <button type="button" disabled={!transferTarget || !transferItemIds.length} onClick={transferItems} style={{ background: !transferTarget || !transferItemIds.length ? "rgba(255,255,255,0.3)" : "linear-gradient(135deg, #ffffff, #e2e8f0)", color: "#1e3a5f", border: "none", borderRadius: 14, padding: "11px 24px", fontSize: 14, fontWeight: 800, cursor: !transferTarget || !transferItemIds.length ? "default" : "pointer", boxShadow: "0 10px 24px rgba(0,0,0,0.16)" }}><ArrowLeftRight size={16} /> Transferir {transferItemIds.length ? `${transferItemIds.length} item(ns)` : ""}</button>
               </div>
             </div>
           </div>
@@ -412,31 +548,34 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
 
         {showMergeModal && selectedTable && (
           <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.6)", zIndex: 998, display: "grid", placeItems: "center", backdropFilter: "blur(4px)" }} onClick={() => setShowMergeModal(false)}>
-            <div style={{ background: "#fff", borderRadius: 20, width: 440, maxWidth: "96vw", boxShadow: "0 25px 80px rgba(0,0,0,0.2)", overflow: "hidden" }} onClick={(e) => e.stopPropagation()}>
-              <div className="row-between" style={{ padding: "16px 24px", borderBottom: "1px solid #e2e8f0", background: "#f8fafc" }}>
-                <h3 style={{ margin: 0, fontSize: 17, color: "#1e293b" }}><Merge size={18} style={{ marginRight: 8, color: "#8b5cf6" }} />Juntar Mesas</h3>
-                <button className="ghost" onClick={() => setShowMergeModal(false)} style={{ borderRadius: 10, padding: 6 }}><X size={18} /></button>
+            <div style={{ background: "linear-gradient(135deg, #0f172a, #1d4ed8)", borderRadius: 22, width: 560, maxWidth: "94vw", maxHeight: "90vh", display: "flex", flexDirection: "column", boxShadow: "0 25px 80px rgba(37,99,235,0.4)", color: "#fff", overflow: "hidden" }} onClick={(e) => e.stopPropagation()}>
+              <div style={{ padding: "26px 24px 18px", textAlign: "center" }}>
+                <div style={{ width: 56, height: 56, borderRadius: "50%", background: "rgba(255,255,255,0.12)", display: "grid", placeItems: "center", margin: "0 auto 12px", border: "1px solid rgba(255,255,255,0.18)" }}>
+                  <Merge size={26} style={{ color: "#fff" }} />
+                </div>
+                <h3 style={{ margin: "0 0 4px", fontSize: 24 }}>Juntar Mesas</h3>
+                <p style={{ margin: 0, opacity: 0.82, fontSize: 14 }}>Selecione as mesas que vão ser reunidas.</p>
               </div>
-              <div style={{ padding: "20px 24px" }}>
-                <p style={{ fontSize: 14, color: "#475569", margin: "0 0 16px" }}>Selecione as mesas ocupadas para juntar com <strong>{selectedTable.name}</strong>.<br /><small style={{ color: "#94a3b8" }}>Os itens serão movidos para esta mesa e as mesas selecionadas serão liberadas.</small></p>
+              <div style={{ flex: 1, overflow: "auto", padding: "0 24px 20px", display: "grid", gap: 8 }}>
+                <p style={{ margin: 0, color: "rgba(255,255,255,0.75)", fontSize: 13 }}>Escolha as mesas ocupadas que serão reunidas nesta mesa principal.</p>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {tables.filter((t) => t.id !== selectedTable.id && t.status === "OCUPADA").map((t) => {
                     const checked = mergeSources.includes(t.id);
                     return (
-                      <label key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", borderRadius: 12, border: checked ? "2px solid #8b5cf6" : "1px solid #e2e8f0", background: checked ? "#f5f3ff" : "#fff", cursor: "pointer" }}>
-                        <input type="checkbox" checked={checked} onChange={() => setMergeSources((prev) => prev.includes(t.id) ? prev.filter((id) => id !== t.id) : [...prev, t.id])} style={{ accentColor: "#8b5cf6" }} />
-                        <Users size={18} style={{ color: "#8b5cf6" }} />
-                        <span style={{ flex: 1, fontWeight: 600, color: "#1e293b" }}>{t.name}</span>
-                        {t.customerName && <small style={{ color: "#64748b" }}>{t.customerName}</small>}
+                      <label key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: 12, borderRadius: 14, border: checked ? "2px solid rgba(255,255,255,0.35)" : "1px solid rgba(255,255,255,0.12)", background: checked ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.08)", cursor: "pointer" }}>
+                        <input type="checkbox" checked={checked} onChange={() => setMergeSources((prev) => prev.includes(t.id) ? prev.filter((id) => id !== t.id) : [...prev, t.id])} />
+                        <Users size={18} style={{ color: "#fff" }} />
+                        <span style={{ flex: 1, fontWeight: 700, color: "#fff" }}>{t.name}</span>
+                        {t.customerName && <small style={{ color: "#dbeafe" }}>{t.customerName}</small>}
                       </label>
                     );
                   })}
-                  {!tables.filter((t) => t.id !== selectedTable.id && t.status === "OCUPADA").length && <p style={{ color: "#94a3b8", textAlign: "center" }}>Nenhuma mesa ocupada disponível.</p>}
+                  {!tables.filter((t) => t.id !== selectedTable.id && t.status === "OCUPADA").length && <div style={{ padding: 16, textAlign: "center", color: "rgba(255,255,255,0.75)", border: "1px dashed rgba(255,255,255,0.18)", borderRadius: 12, background: "rgba(255,255,255,0.06)" }}>Nenhuma mesa ocupada disponível.</div>}
                 </div>
               </div>
-              <div style={{ padding: "16px 24px", borderTop: "1px solid #e2e8f0", display: "flex", gap: 10, justifyContent: "flex-end" }}>
-                <button className="ghost" onClick={() => setShowMergeModal(false)} style={{ borderRadius: 10, padding: "10px 20px" }}>Cancelar</button>
-                <button disabled={!mergeSources.length} onClick={mergeTables} style={{ background: !mergeSources.length ? "#cbd5e1" : "linear-gradient(135deg, #8b5cf6, #7c3aed)", color: "#fff", border: "none", borderRadius: 10, padding: "10px 24px", fontSize: 14, fontWeight: 700, cursor: !mergeSources.length ? "default" : "pointer" }}><Merge size={16} /> Juntar {mergeSources.length} mesa(s)</button>
+              <div style={{ padding: "16px 24px 24px", display: "flex", gap: 10, justifyContent: "center" }}>
+                <button type="button" className="ghost" onClick={() => setShowMergeModal(false)} style={{ color: "rgba(255,255,255,0.9)", border: "1px solid rgba(255,255,255,0.18)", borderRadius: 14, padding: "11px 24px", fontSize: 14, background: "rgba(255,255,255,0.06)" }}>Cancelar</button>
+                <button type="button" disabled={!mergeSources.length} onClick={mergeTables} style={{ background: !mergeSources.length ? "rgba(255,255,255,0.3)" : "linear-gradient(135deg, #ffffff, #e2e8f0)", color: "#1e3a5f", border: "none", borderRadius: 14, padding: "11px 24px", fontSize: 14, fontWeight: 800, cursor: !mergeSources.length ? "default" : "pointer", boxShadow: "0 10px 24px rgba(0,0,0,0.16)" }}><Merge size={16} /> Juntar {mergeSources.length ? `${mergeSources.length} mesa(s)` : ""}</button>
               </div>
             </div>
           </div>

@@ -1,5 +1,6 @@
 import React from "react";
-import { ChevronLeft, DollarSign, Package2, Plus, Printer, Search, Trash2, UserRound, X } from "lucide-react";
+import { createPortal } from "react-dom";
+import { ArrowLeftRight, ChevronLeft, DollarSign, Merge, Package2, Plus, Printer, Search, Trash2, UserRound, X } from "lucide-react";
 
 type MoneyFn = (value: number) => string;
 type TableData = { id: string; name: string; status: string; waiterName?: string | null; customerName?: string | null; active: boolean };
@@ -57,13 +58,15 @@ function calcTotal(items: Array<{ quantity: number; unitPriceCents: number; canc
 export default function ComandasModule({ data: initialData, money, mutate: reload }: { data: { tables: TableData[]; products: ProductData[]; additions: AdditionData[]; customers: CustomerData[]; paymentMethods: PaymentMethodData[]; orders: any[]; company: any; user: any; users: any[] } | null; money: MoneyFn; mutate: (path: string, options?: RequestInit) => Promise<void> }) {
   const filterComandas = React.useCallback((list: TableData[]) => list.filter((table) => table.name.toLowerCase().startsWith("comanda")), []);
   const [tables, setTables] = React.useState<TableData[]>(filterComandas(initialData?.tables ?? []));
+  const [gridOrders, setGridOrders] = React.useState<any[]>(initialData?.orders ?? []);
   const [selectedTable, setSelectedTable] = React.useState<TableData | null>(null);
   const [orders, setOrders] = React.useState<any[]>([]);
   const [view, setView] = React.useState<"grid" | "order" | "payment">("grid");
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [searchTerm, setSearchTerm] = React.useState("");
-  const [selectedProducts, setSelectedProducts] = React.useState<Array<{ product: ProductData; quantity: number; note: string; selectedAdditions: Array<AdditionData & { qty: number }> }>>([]);
+  const [selectedProducts, setSelectedProducts] = React.useState<Array<{ product: ProductData; quantity: number; note: string; showAdditions: boolean; selectedAdditions: Array<AdditionData & { qty: number }> }>>([]);
+  const [activeProductIndex, setActiveProductIndex] = React.useState<number | null>(null);
   const [showAddItem, setShowAddItem] = React.useState(false);
   const [customerSearch, setCustomerSearch] = React.useState("");
   const [selectedCustomer, setSelectedCustomer] = React.useState<CustomerData | null>(null);
@@ -87,15 +90,19 @@ export default function ComandasModule({ data: initialData, money, mutate: reloa
   React.useEffect(() => {
     if (!initialData) return;
     setTables(filterComandas(initialData.tables));
+    setGridOrders(initialData.orders ?? []);
   }, [initialData, filterComandas]);
 
   React.useEffect(() => {
-    if (view !== "grid") window.scrollTo({ top: 0, behavior: "smooth" });
+    if (view !== "grid") window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
   }, [view]);
 
   async function loadComandas() {
-    const all = await api("/api/tables");
-    setTables(filterComandas(all ?? []));
+    const [all, latestOrders] = await Promise.all([api("/api/tables"), api("/api/orders?type=MESA")]);
+    const filtered = filterComandas(all ?? []);
+    setTables(filtered);
+    setGridOrders(latestOrders ?? []);
+    return filtered;
   }
 
   async function loadComandaOrders() {
@@ -115,18 +122,32 @@ export default function ComandasModule({ data: initialData, money, mutate: reloa
     if (selectedTable && (view === "order" || view === "payment")) void loadComandaOrders();
   }, [selectedTable, view]);
 
+  React.useEffect(() => {
+    setShowTransfer(false);
+    setShowMergeModal(false);
+    setTransferItemIds([]);
+    setTransferTarget("");
+    setMergeSources([]);
+  }, [selectedTable?.id]);
+
   async function openTable() {
     if (!selectedTable) return;
     setLoading(true);
     try {
+      setShowTransfer(false);
+      setShowMergeModal(false);
+      setTransferItemIds([]);
+      setTransferTarget("");
+      setMergeSources([]);
       const opened = await api(`/api/tables/${selectedTable.id}/open`, { method: "PUT", body: JSON.stringify({ customerName: openCustomerName || null }) });
       setSelectedTable(opened);
       await reload("/api/company", {});
-      const order = await api("/api/orders", { method: "POST", body: JSON.stringify({ type: "MESA", tableId: opened.id, items: [], payments: [] }) });
+      const order = await api("/api/orders", { method: "POST", body: JSON.stringify({ type: "MESA", tableId: opened.id, customerNameSnapshot: opened.customerName ?? null, items: [], payments: [] }) });
       setOrders([order]);
       await loadComandas();
+      setOpenCustomerName("");
       setView("order");
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -196,11 +217,21 @@ export default function ComandasModule({ data: initialData, money, mutate: reloa
     setLoading(true);
     try {
       await api("/api/orders/transfer-items", { method: "POST", body: JSON.stringify({ fromTableId: selectedTable.id, toTableId: transferTarget, orderItemIds: transferItemIds }) });
-      await loadComandas();
-      await loadComandaOrders();
+      await reload("/api/company", {});
+      const updatedTables = await loadComandas();
+      const updatedSelected = updatedTables.find((table) => table.id === selectedTable.id) ?? selectedTable;
       setShowTransfer(false);
       setTransferItemIds([]);
       setTransferTarget("");
+      if (updatedSelected.status === "LIVRE") {
+        setSelectedTable(null);
+        setOrders([]);
+        setView("grid");
+        return;
+      }
+      setSelectedTable(updatedSelected);
+      const data = await api(`/api/tables/${updatedSelected.id}/pre-conta`);
+      setOrders(data.orders ?? []);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -213,8 +244,12 @@ export default function ComandasModule({ data: initialData, money, mutate: reloa
     setLoading(true);
     try {
       await api("/api/tables/merge", { method: "POST", body: JSON.stringify({ mainTableId: selectedTable.id, secondaryTableIds: mergeSources }) });
-      await loadComandas();
-      await loadComandaOrders();
+      await reload("/api/company", {});
+      const updatedTables = await loadComandas();
+      const updatedSelected = updatedTables.find((table) => table.id === selectedTable.id) ?? selectedTable;
+      setSelectedTable(updatedSelected);
+      const data = await api(`/api/tables/${updatedSelected.id}/pre-conta`);
+      setOrders(data.orders ?? []);
       setShowMergeModal(false);
       setMergeSources([]);
     } catch (e: any) {
@@ -235,7 +270,7 @@ export default function ComandasModule({ data: initialData, money, mutate: reloa
       if (paymentTotal < total) return setError("Total dos pagamentos é menor que o valor da conta.");
       await api(`/api/orders/${orderId}/pay`, { method: "POST", body: JSON.stringify({ customerId: selectedCustomer?.id, payments: payments.map((p) => ({ paymentMethodId: p.method.id, methodNameSnapshot: p.method.name, amountCents: p.amountCents, feeCents: 0, changeCents: 0 })), generateReceivable: false, receivableDueDate: receivableDueDate || undefined }) });
       setPaidOrderId(orderId);
-      setShowPrintDialog(true);
+      await finishPayment(true, orderId);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -243,12 +278,13 @@ export default function ComandasModule({ data: initialData, money, mutate: reloa
     }
   }
 
-  async function finishPayment(doPrint: boolean) {
-    if (!paidOrderId) return;
+  async function finishPayment(doPrint: boolean, orderIdOverride?: string) {
+    const targetOrderId = orderIdOverride ?? paidOrderId;
+    if (!targetOrderId) return;
     setShowPrintDialog(false);
     setLoading(true);
     try {
-      if (doPrint) await api(`/api/orders/${paidOrderId}/reprint`, { method: "POST" }).catch(() => {});
+      if (doPrint) await api(`/api/orders/${targetOrderId}/reprint`, { method: "POST" }).catch(() => {});
       await reload("/api/company", {});
       await loadComandas();
       setView("grid");
@@ -285,8 +321,13 @@ export default function ComandasModule({ data: initialData, money, mutate: reloa
   const cancelledItems = items.filter((i: any) => i.cancelledAt);
 
   function selectProduct(product: ProductData) {
-    if (selectedProducts.some((sp) => sp.product.id === product.id)) return;
-    setSelectedProducts([...selectedProducts, { product, quantity: 1, note: "", selectedAdditions: [] }]);
+    const existingIndex = selectedProducts.findIndex((sp) => sp.product.id === product.id);
+    if (existingIndex >= 0) {
+      setActiveProductIndex(existingIndex);
+      return;
+    }
+    setSelectedProducts([...selectedProducts, { product, quantity: 1, note: "", showAdditions: false, selectedAdditions: [] }]);
+    setActiveProductIndex(selectedProducts.length);
   }
 
   function updateProductQty(index: number, qty: number) {
@@ -302,7 +343,13 @@ export default function ComandasModule({ data: initialData, money, mutate: reloa
   }
 
   function removeProduct(index: number) {
-    setSelectedProducts(selectedProducts.filter((_, i) => i !== index));
+    setSelectedProducts((prev) => prev.filter((_, i) => i !== index));
+    setActiveProductIndex((prev) => {
+      if (prev === null) return null;
+      if (prev === index) return null;
+      if (prev > index) return prev - 1;
+      return prev;
+    });
   }
 
   function toggleAddition(spIndex: number, add: AdditionData) {
@@ -319,13 +366,105 @@ export default function ComandasModule({ data: initialData, money, mutate: reloa
     setSelectedProducts(copy);
   }
 
+  function toggleProductAdditions(index: number) {
+    const copy = [...selectedProducts];
+    copy[index] = { ...copy[index], showAdditions: !copy[index].showAdditions };
+    setSelectedProducts(copy);
+  }
+
+  function openAddItemModal() {
+    setSelectedProducts([]);
+    setSearchTerm("");
+    setActiveProductIndex(null);
+    setShowAddItem(true);
+  }
+
+  function closeAddItemModal() {
+    setSelectedProducts([]);
+    setSearchTerm("");
+    setActiveProductIndex(null);
+    setShowAddItem(false);
+  }
+
+  function renderTransferMergeModals() {
+    if (!selectedTable) return null;
+    return (
+      <>
+        {showTransfer && createPortal(
+          <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.6)", zIndex: 10000, display: "grid", placeItems: "center", backdropFilter: "blur(4px)" }} onClick={() => setShowTransfer(false)}>
+            <div style={{ background: "linear-gradient(135deg, #0f172a, #1d4ed8)", borderRadius: 22, width: 560, maxWidth: "94vw", maxHeight: "90vh", display: "flex", flexDirection: "column", boxShadow: "0 25px 80px rgba(37,99,235,0.4)", color: "#fff", overflow: "hidden" }} onClick={(e) => e.stopPropagation()}>
+              <div style={{ padding: "26px 24px 18px", textAlign: "center" }}>
+                <div style={{ width: 56, height: 56, borderRadius: "50%", background: "rgba(255,255,255,0.12)", display: "grid", placeItems: "center", margin: "0 auto 12px", border: "1px solid rgba(255,255,255,0.18)" }}>
+                  <ArrowLeftRight size={26} style={{ color: "#fff" }} />
+                </div>
+                <h3 style={{ margin: "0 0 4px", fontSize: 24 }}>Transferir Itens</h3>
+                <p style={{ margin: 0, opacity: 0.82, fontSize: 14 }}>Escolha os itens e a comanda de destino.</p>
+              </div>
+              <div style={{ flex: 1, overflow: "auto", padding: "0 24px 20px", display: "grid", gap: 8 }}>
+                <p style={{ margin: 0, color: "rgba(255,255,255,0.75)", fontSize: 13 }}>Selecione os itens que deseja mover para outra comanda.</p>
+                {items.filter((i: any) => !i.cancelledAt).map((item: any) => {
+                  const checked = transferItemIds.includes(item.id);
+                  return (
+                    <label key={item.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: 12, borderRadius: 14, border: checked ? "2px solid rgba(255,255,255,0.35)" : "1px solid rgba(255,255,255,0.12)", background: checked ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.08)", cursor: "pointer" }}>
+                      <input type="checkbox" checked={checked} onChange={() => setTransferItemIds((prev) => prev.includes(item.id) ? prev.filter((id) => id !== item.id) : [...prev, item.id])} />
+                      <strong style={{ flex: 1, color: "#fff" }}>{item.nameSnapshot}</strong>
+                      <span style={{ color: "#dbeafe", fontWeight: 800 }}>{money(item.totalCents)}</span>
+                    </label>
+                  );
+                })}
+                {!items.filter((i: any) => !i.cancelledAt).length && <div style={{ padding: 16, textAlign: "center", color: "rgba(255,255,255,0.75)", border: "1px dashed rgba(255,255,255,0.18)", borderRadius: 12, background: "rgba(255,255,255,0.06)" }}>Nenhum item disponivel para transferir.</div>}
+                <label style={{ color: "#fff" }}>Comanda destino<select value={transferTarget} onChange={(e) => setTransferTarget(e.target.value)} style={{ background: "rgba(255,255,255,0.95)", color: "#0f172a" }}><option value="">Selecione...</option>{tables.filter((t) => t.id !== selectedTable.id).map((t) => <option key={t.id} value={t.id}>{t.name} ({statusLabel[t.status] ?? t.status})</option>)}</select></label>
+              </div>
+              <div style={{ padding: "16px 24px 24px", display: "flex", gap: 10, justifyContent: "center" }}>
+                <button type="button" className="ghost" onClick={() => setShowTransfer(false)} style={{ color: "rgba(255,255,255,0.9)", border: "1px solid rgba(255,255,255,0.18)", borderRadius: 14, padding: "11px 24px", fontSize: 14, background: "rgba(255,255,255,0.06)" }}>Cancelar</button>
+                <button type="button" disabled={!transferTarget || !transferItemIds.length} onClick={transferItems} style={{ background: "linear-gradient(135deg, #ffffff, #e2e8f0)", color: "#1e3a5f", border: "none", borderRadius: 14, padding: "11px 24px", fontSize: 14, fontWeight: 800, cursor: !transferTarget || !transferItemIds.length ? "default" : "pointer", boxShadow: "0 10px 24px rgba(0,0,0,0.16)" }}>Transferir {transferItemIds.length ? `${transferItemIds.length} item(ns)` : ""}</button>
+              </div>
+            </div>
+          </div>, document.body
+        )}
+
+        {showMergeModal && createPortal(
+          <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.6)", zIndex: 10000, display: "grid", placeItems: "center", backdropFilter: "blur(4px)" }} onClick={() => setShowMergeModal(false)}>
+            <div style={{ background: "linear-gradient(135deg, #0f172a, #1d4ed8)", borderRadius: 22, width: 460, maxWidth: "94vw", maxHeight: "90vh", display: "flex", flexDirection: "column", boxShadow: "0 25px 80px rgba(37,99,235,0.4)", color: "#fff", overflow: "hidden" }} onClick={(e) => e.stopPropagation()}>
+              <div style={{ padding: "26px 24px 18px", textAlign: "center" }}>
+                <div style={{ width: 56, height: 56, borderRadius: "50%", background: "rgba(255,255,255,0.12)", display: "grid", placeItems: "center", margin: "0 auto 12px", border: "1px solid rgba(255,255,255,0.18)" }}>
+                  <Merge size={26} style={{ color: "#fff" }} />
+                </div>
+                <h3 style={{ margin: "0 0 4px", fontSize: 24 }}>Juntar Comandas</h3>
+                <p style={{ margin: 0, opacity: 0.82, fontSize: 14 }}>Selecione quais comandas vao ser reunidas.</p>
+              </div>
+              <div style={{ flex: 1, overflow: "auto", padding: "0 24px 20px", display: "grid", gap: 8 }}>
+                <p style={{ margin: 0, color: "rgba(255,255,255,0.75)", fontSize: 13 }}>Escolha as comandas ocupadas que serao reunidas nesta comanda principal.</p>
+                {tables.filter((t) => t.id !== selectedTable.id && t.status === "OCUPADA").map((t) => {
+                  const checked = mergeSources.includes(t.id);
+                  return (
+                    <label key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: 12, borderRadius: 14, border: checked ? "2px solid rgba(255,255,255,0.35)" : "1px solid rgba(255,255,255,0.12)", background: checked ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.08)", cursor: "pointer" }}>
+                      <input type="checkbox" checked={checked} onChange={() => setMergeSources((prev) => prev.includes(t.id) ? prev.filter((id) => id !== t.id) : [...prev, t.id])} />
+                      <strong style={{ flex: 1, color: "#fff" }}>{t.name}</strong>
+                      {t.customerName && <small style={{ color: "#dbeafe" }}>{t.customerName}</small>}
+                    </label>
+                  );
+                })}
+                {!tables.filter((t) => t.id !== selectedTable.id && t.status === "OCUPADA").length && <div style={{ padding: 16, textAlign: "center", color: "rgba(255,255,255,0.75)", border: "1px dashed rgba(255,255,255,0.18)", borderRadius: 12, background: "rgba(255,255,255,0.06)" }}>Nenhuma comanda ocupada disponivel.</div>}
+              </div>
+              <div style={{ padding: "16px 24px 24px", display: "flex", gap: 10, justifyContent: "center" }}>
+                <button type="button" className="ghost" onClick={() => setShowMergeModal(false)} style={{ color: "rgba(255,255,255,0.9)", border: "1px solid rgba(255,255,255,0.18)", borderRadius: 14, padding: "11px 24px", fontSize: 14, background: "rgba(255,255,255,0.06)" }}>Cancelar</button>
+                <button type="button" disabled={!mergeSources.length} onClick={mergeTables} style={{ background: "linear-gradient(135deg, #ffffff, #e2e8f0)", color: "#1e3a5f", border: "none", borderRadius: 14, padding: "11px 24px", fontSize: 14, fontWeight: 800, cursor: !mergeSources.length ? "default" : "pointer", boxShadow: "0 10px 24px rgba(0,0,0,0.16)" }}>Juntar {mergeSources.length ? `${mergeSources.length} comanda(s)` : ""}</button>
+              </div>
+            </div>
+          </div>, document.body
+        )}
+      </>
+    );
+  }
+
   if (view === "order" && selectedTable) {
     return (
       <div className="stack">
         {error && <div className="toast" style={{ position: "static", marginBottom: 8 }}>{error}<button className="ghost" style={{ marginLeft: 8 }} onClick={() => setError(null)}>OK</button></div>}
         {loading && <div className="loading-bar" />}
-        <div style={{ display: "grid", gridTemplateColumns: "260px 1px minmax(0, 1fr)", gap: 0, alignItems: "stretch" }}>
-          <aside className="panel" style={{ position: "sticky", top: 16, display: "grid", gap: 8, marginRight: 14, padding: "16px 12px 16px 16px", overflow: "hidden", background: "linear-gradient(180deg, rgba(15,23,42,0.96), rgba(30,41,59,0.92))", border: "1px solid rgba(255,255,255,0.12)", boxShadow: "0 18px 40px rgba(0,0,0,0.18)" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "300px 1px minmax(0, 1fr)", gap: 0, alignItems: "stretch" }}>
+          <aside className="panel" style={{ position: "sticky", top: 16, display: "grid", gap: 8, marginRight: 14, padding: "16px 18px", overflow: "hidden", minWidth: 0, background: "linear-gradient(180deg, rgba(15,23,42,0.96), rgba(30,41,59,0.92))", border: "1px solid rgba(255,255,255,0.12)", boxShadow: "0 18px 40px rgba(0,0,0,0.18)" }}>
             <div style={{ padding: "2px 2px 4px", borderBottom: "1px solid rgba(255,255,255,0.08)", marginBottom: 2 }}>
               <div style={{ fontSize: 11, letterSpacing: 1.2, textTransform: "uppercase", color: "rgba(226,232,240,0.55)", fontWeight: 700 }}>Menu da comanda</div>
               <div style={{ fontSize: 12, color: "rgba(226,232,240,0.78)", marginTop: 2 }}>Ações rápidas</div>
@@ -334,19 +473,19 @@ export default function ComandasModule({ data: initialData, money, mutate: reloa
               <h2 style={{ margin: 0 }}>{selectedTable.name}</h2>
               <small style={{ color: "var(--text-muted)" }}>{statusLabel[selectedTable.status]} · {orders[0]?.createdAt ? new Date(orders[0].createdAt).toLocaleString("pt-BR") : ""}</small>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, background: "linear-gradient(135deg, #dbeafe, #eff6ff)", borderRadius: 50, padding: "5px 12px 5px 10px", width: "fit-content", border: "1px solid #93c5fd" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, background: "linear-gradient(135deg, #dbeafe, #eff6ff)", borderRadius: 50, padding: "5px 12px 5px 10px", width: "100%", maxWidth: "100%", border: "1px solid #93c5fd", boxSizing: "border-box" }}>
               <UserRound size={14} style={{ color: "#2563eb" }} />
               <span style={{ fontSize: 12, fontWeight: 600, color: "#1e40af" }}>Cliente:</span>
-              <input value={selectedTable.customerName ?? ""} autoFocus={!selectedTable.customerName} onChange={async (e) => { const v = e.target.value; await api(`/api/tables/${selectedTable.id}`, { method: "PUT", body: JSON.stringify({ customerName: v || null }) }); await loadComandas(); setSelectedTable((prev) => prev ? { ...prev, customerName: v || null } : prev); }} style={{ background: "transparent", border: "none", color: "#1e3a5f", fontWeight: 700, fontSize: 13, padding: "1px 4px", minWidth: 86, outline: "none" }} placeholder="Digite o nome..." />
+              <input value={selectedTable.customerName ?? ""} autoFocus={!selectedTable.customerName} onChange={async (e) => { const v = e.target.value; await api(`/api/tables/${selectedTable.id}`, { method: "PUT", body: JSON.stringify({ customerName: v || null }) }); await loadComandas(); setSelectedTable((prev) => prev ? { ...prev, customerName: v || null } : prev); }} style={{ background: "transparent", border: "none", color: "#1e3a5f", fontWeight: 700, fontSize: 13, padding: "1px 4px", minWidth: 0, flex: 1, outline: "none" }} placeholder="Digite o nome..." />
             </div>
-            <div style={{ display: "grid", gap: 7, paddingRight: 10 }}>
-              <button onClick={() => setShowAddItem(true)} style={{ background: "linear-gradient(135deg, #10b981, #059669)", border: 0, borderRadius: 50, padding: "7px 8px 7px 18px", color: "#fff", fontWeight: 700, fontSize: 11.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 7, minHeight: 32, width: "100%" }}><Plus size={12} /> Lançar Item</button>
-              <button onClick={() => setShowCancelTable(true)} style={{ background: "linear-gradient(135deg, #ef4444, #dc2626)", border: 0, borderRadius: 50, padding: "7px 8px 7px 18px", color: "#fff", fontWeight: 700, fontSize: 11.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 7, minHeight: 32, width: "100%" }}><Trash2 size={12} /> Cancelar Comanda</button>
-              <button onClick={() => setShowTransfer(true)} style={{ background: "linear-gradient(135deg, #f59e0b, #d97706)", border: 0, borderRadius: 50, padding: "7px 8px 7px 18px", color: "#fff", fontWeight: 700, fontSize: 11.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 7, minHeight: 32, width: "100%" }}><Trash2 size={12} /> Transferir</button>
-              <button onClick={() => setShowMergeModal(true)} style={{ background: "linear-gradient(135deg, #8b5cf6, #7c3aed)", border: 0, borderRadius: 50, padding: "7px 8px 7px 18px", color: "#fff", fontWeight: 700, fontSize: 11.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 7, minHeight: 32, width: "100%" }}><UserRound size={12} /> Juntar</button>
-              <button onClick={() => { api(`/api/orders/${orders[0]?.id}/reprint`, { method: "POST" }).catch(() => {}); }} style={{ background: "linear-gradient(135deg, #06b6d4, #0891b2)", border: 0, borderRadius: 50, padding: "7px 8px 7px 18px", color: "#fff", fontWeight: 700, fontSize: 11.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 7, minHeight: 32, width: "100%" }}><Printer size={12} /> Imprimir</button>
-              <button onClick={() => setView("payment")} style={{ background: "linear-gradient(135deg, #10b981, #059669)", border: 0, borderRadius: 50, padding: "7px 8px 7px 18px", color: "#fff", fontWeight: 700, fontSize: 11.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 7, minHeight: 32, width: "100%" }}><DollarSign size={12} /> Conta</button>
-              <button onClick={() => { setView("grid"); setSelectedTable(null); setOrders([]); }} style={{ background: "linear-gradient(135deg, #64748b, #475569)", border: 0, borderRadius: 50, padding: "7px 8px 7px 18px", color: "#fff", fontWeight: 700, fontSize: 11.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 7, minHeight: 32, width: "100%" }}><ChevronLeft size={12} /> Voltar</button>
+            <div style={{ display: "grid", gap: 7 }}>
+              <button type="button" onClick={openAddItemModal} style={{ background: "linear-gradient(135deg, #10b981, #059669)", border: 0, borderRadius: 50, padding: "7px 8px 7px 18px", color: "#fff", fontWeight: 700, fontSize: 11.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 7, minHeight: 32, width: "100%" }}><Plus size={12} /> Lançar Item</button>
+              <button type="button" onClick={() => setShowCancelTable(true)} style={{ background: "linear-gradient(135deg, #ef4444, #dc2626)", border: 0, borderRadius: 50, padding: "7px 8px 7px 18px", color: "#fff", fontWeight: 700, fontSize: 11.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 7, minHeight: 32, width: "100%" }}><Trash2 size={12} /> Cancelar Comanda</button>
+              <button type="button" onClick={() => { setError(null); setTransferItemIds([]); setTransferTarget(""); setShowTransfer(true); }} style={{ background: "linear-gradient(135deg, #f59e0b, #d97706)", border: 0, borderRadius: 50, padding: "7px 8px 7px 18px", color: "#fff", fontWeight: 700, fontSize: 11.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 7, minHeight: 32, width: "100%" }}><ArrowLeftRight size={12} /> Transferir</button>
+              <button type="button" onClick={() => { setError(null); setMergeSources([]); setShowMergeModal(true); }} style={{ background: "linear-gradient(135deg, #8b5cf6, #7c3aed)", border: 0, borderRadius: 50, padding: "7px 8px 7px 18px", color: "#fff", fontWeight: 700, fontSize: 11.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 7, minHeight: 32, width: "100%" }}><Merge size={12} /> Juntar</button>
+              <button type="button" onClick={() => { api(`/api/orders/${orders[0]?.id}/reprint`, { method: "POST" }).catch(() => {}); }} style={{ background: "linear-gradient(135deg, #06b6d4, #0891b2)", border: 0, borderRadius: 50, padding: "7px 8px 7px 18px", color: "#fff", fontWeight: 700, fontSize: 11.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 7, minHeight: 32, width: "100%" }}><Printer size={12} /> Imprimir</button>
+              <button type="button" onClick={() => setView("payment")} style={{ background: "linear-gradient(135deg, #10b981, #059669)", border: 0, borderRadius: 50, padding: "7px 8px 7px 18px", color: "#fff", fontWeight: 700, fontSize: 11.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 7, minHeight: 32, width: "100%" }}><DollarSign size={12} /> Conta</button>
+              <button type="button" onClick={() => { setShowTransfer(false); setShowMergeModal(false); setTransferItemIds([]); setTransferTarget(""); setMergeSources([]); setView("grid"); setSelectedTable(null); setOrders([]); }} style={{ background: "linear-gradient(135deg, #64748b, #475569)", border: 0, borderRadius: 50, padding: "7px 8px 7px 18px", color: "#fff", fontWeight: 700, fontSize: 11.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 7, minHeight: 32, width: "100%" }}><ChevronLeft size={12} /> Voltar</button>
             </div>
           </aside>
 
@@ -363,7 +502,7 @@ export default function ComandasModule({ data: initialData, money, mutate: reloa
                 <span style={{ background: "rgba(255,255,255,0.06)", color: "#e2e8f0", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 999, padding: "6px 12px", fontSize: 12, fontWeight: 700 }}>Toque duplo para editar</span>
               </div>
             </div>
-            <div style={{ display: "grid", gap: 10 }}>
+            <div style={{ display: "grid", gap: 10, maxHeight: "calc(100vh - 310px)", overflowY: "auto", paddingRight: 8, scrollbarGutter: "stable" }}>
               {activeItems.map((item: any, idx: number) => (
                 <div key={item.id ?? idx} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto auto auto", gap: 12, alignItems: "center", padding: "14px 16px", borderRadius: 16, background: "linear-gradient(180deg, rgba(71,85,105,0.58), rgba(71,85,105,0.38))", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.05)" }}>
                   <div style={{ minWidth: 0 }}>
@@ -410,66 +549,99 @@ export default function ComandasModule({ data: initialData, money, mutate: reloa
         </div>
 
         {showAddItem && (
-          <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.6)", zIndex: 998, display: "grid", placeItems: "center", backdropFilter: "blur(4px)" }} onClick={() => { if (!selectedProducts.length) setShowAddItem(false); }}>
-            <div style={{ background: "#fff", borderRadius: 20, width: 740, maxWidth: "96vw", maxHeight: "90vh", display: "flex", flexDirection: "column", boxShadow: "0 25px 80px rgba(37,99,235,0.15)", overflow: "hidden" }} onClick={(e) => e.stopPropagation()}>
+          <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.6)", zIndex: 998, display: "grid", placeItems: "center", backdropFilter: "blur(4px)" }} onClick={closeAddItemModal}>
+            <div style={{ background: "#fff", borderRadius: 20, width: 1100, maxWidth: "98vw", maxHeight: "92vh", display: "flex", flexDirection: "column", boxShadow: "0 25px 80px rgba(37,99,235,0.15)", overflow: "hidden" }} onClick={(e) => e.stopPropagation()}>
               <div className="row-between" style={{ padding: "16px 24px", borderBottom: "1px solid #e2e8f0", background: "#f8fafc" }}>
                 <h3 style={{ margin: 0, fontSize: 17, color: "#1e293b" }}><Package2 size={18} style={{ marginRight: 8, color: "#2563eb" }} />Lançar Itens</h3>
-                <button className="ghost" onClick={() => setShowAddItem(false)} style={{ borderRadius: 10, padding: 6 }}><X size={18} /></button>
+                <button className="ghost" onClick={closeAddItemModal} style={{ borderRadius: 10, padding: 6 }}><X size={18} /></button>
               </div>
-              <div style={{ padding: "12px 24px", borderBottom: "1px solid #e2e8f0" }}>
-                <div style={{ position: "relative" }}>
-                  <Search size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }} />
-                  <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Buscar por nome ou código..." autoFocus style={{ width: "100%", padding: "10px 14px 10px 36px", borderRadius: 10, border: "2px solid #e2e8f0", fontSize: 14, outline: "none", boxSizing: "border-box", background: "#fff" }} />
+              <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "1.25fr 0.95fr", background: "#f8fafc" }}>
+                <div style={{ minWidth: 0, borderRight: "1px solid #e2e8f0", display: "flex", flexDirection: "column", minHeight: 0 }}>
+                  <div style={{ padding: "12px 24px", borderBottom: "1px solid #e2e8f0" }}>
+                    <div style={{ position: "relative" }}>
+                      <Search size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }} />
+                      <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Buscar por nome ou código..." autoFocus style={{ width: "100%", padding: "10px 14px 10px 36px", borderRadius: 10, border: "2px solid #e2e8f0", fontSize: 14, outline: "none", boxSizing: "border-box", background: "#fff" }} />
+                    </div>
+                  </div>
+                  <div style={{ flex: 1, overflow: "auto", padding: "12px 24px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    {filteredProducts.map((p) => {
+                      const isSelected = selectedProducts.some((sp) => sp.product.id === p.id);
+                      return (
+                        <button key={p.id} onClick={() => { if (!isSelected) selectProduct(p); else removeProduct(selectedProducts.findIndex((sp) => sp.product.id === p.id)); }} style={{ display: "flex", gap: 10, alignItems: "center", padding: "10px 14px", borderRadius: 12, border: isSelected ? "2px solid #2563eb" : "1px solid #e2e8f0", background: isSelected ? "#eff6ff" : "#fff", cursor: "pointer", textAlign: "left", fontSize: 13 }}>
+                          <span style={{ color: "#94a3b8", fontWeight: 700, minWidth: 32, fontSize: 12 }}>#{p.code}</span>
+                          <div style={{ flex: 1 }}><strong style={{ display: "block", fontSize: 14, color: "#1e293b" }}>{p.name}</strong><small style={{ color: "#94a3b8" }}>{p.category?.name ?? ""}</small></div>
+                          <span style={{ fontWeight: 700, color: "#2563eb", whiteSpace: "nowrap", fontSize: 14 }}>{money(p.salePriceCents)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-              <div style={{ flex: 1, overflow: "auto", padding: "12px 24px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, background: "#f8fafc" }}>
-                {filteredProducts.map((p) => {
-                  const isSelected = selectedProducts.some((sp) => sp.product.id === p.id);
-                  return (
-                    <button key={p.id} onClick={() => { if (!isSelected) selectProduct(p); else removeProduct(selectedProducts.findIndex((sp) => sp.product.id === p.id)); }} style={{ display: "flex", gap: 10, alignItems: "center", padding: "10px 14px", borderRadius: 12, border: isSelected ? "2px solid #2563eb" : "1px solid #e2e8f0", background: isSelected ? "#eff6ff" : "#fff", cursor: "pointer", textAlign: "left", fontSize: 13 }}>
-                      <span style={{ color: "#94a3b8", fontWeight: 700, minWidth: 32, fontSize: 12 }}>#{p.code}</span>
-                      <div style={{ flex: 1 }}><strong style={{ display: "block", fontSize: 14, color: "#1e293b" }}>{p.name}</strong><small style={{ color: "#94a3b8" }}>{p.category?.name ?? ""}</small></div>
-                      <span style={{ fontWeight: 700, color: "#2563eb", whiteSpace: "nowrap", fontSize: 14 }}>{money(p.salePriceCents)}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              {selectedProducts.length > 0 && (
-                <div style={{ borderTop: "1px solid #e2e8f0", padding: "16px 24px", background: "#fff" }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+
+                <div style={{ display: "flex", flexDirection: "column", minHeight: 0, background: "#fff" }}>
+                  <div style={{ padding: "12px 18px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, borderBottom: "1px solid #e2e8f0", background: "linear-gradient(180deg, #fff, #f8fbff)", boxShadow: "inset 0 -1px 0 rgba(255,255,255,0.8)" }}>
+                    <small style={{ color: "#334155", fontWeight: 800 }}>{selectedProducts.length} item(ns) selecionado(s)</small>
+                    <strong style={{ color: "#0f172a", fontSize: 14, background: "#eff6ff", border: "1px solid rgba(37,99,235,0.18)", borderRadius: 999, padding: "5px 10px" }}>Subtotal: {money(selectedProducts.reduce((sum, sp) => sum + (sp.quantity * sp.product.salePriceCents), 0))}</strong>
+                  </div>
+
+                  <div style={{ flex: 1, overflow: "auto", padding: 12, display: "grid", gap: 8 }}>
+                    {selectedProducts.length === 0 && <div style={{ padding: 18, color: "#64748b", textAlign: "center", border: "1px dashed #cbd5e1", borderRadius: 12, background: "#f8fafc" }}>Nenhum item selecionado.</div>}
                     {selectedProducts.map((sp, idx) => (
-                      <div key={sp.product.id} style={{ background: "#f8fafc", borderRadius: 12, padding: 14, border: "1px solid #e2e8f0" }}>
-                        <div className="row-between"><strong style={{ fontSize: 15, color: "#1e293b" }}>{sp.product.name}</strong><button className="ghost danger" onClick={() => removeProduct(idx)} style={{ padding: 4 }}><X size={16} /></button></div>
-                        <div style={{ display: "flex", gap: 12, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
-                          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "#475569" }}>Qtd<input type="number" value={sp.quantity} onChange={(e) => updateProductQty(idx, Number(e.target.value))} min={1} style={{ width: 58, padding: "6px 10px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 14, textAlign: "center", background: "#fff" }} /></label>
-                          <input value={sp.note} onChange={(e) => updateProductNote(idx, e.target.value)} placeholder="Obs: sem cebola, bem passado..." style={{ flex: 1, minWidth: 160, padding: "6px 10px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13, background: "#fff" }} />
-                          <span style={{ fontWeight: 700, color: "#2563eb", fontSize: 16, marginLeft: "auto", whiteSpace: "nowrap" }}>{money(sp.quantity * sp.product.salePriceCents)}</span>
-                        </div>
-                        <div style={{ marginTop: 10 }}>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                            {additions.filter((a) => a.active).map((add) => {
-                              const sel = sp.selectedAdditions.find((sa) => sa.id === add.id);
-                              return (
-                                <button key={add.id} onClick={() => toggleAddition(idx, add)} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, padding: "5px 12px", borderRadius: 20, border: sel ? "2px solid #2563eb" : "1px solid #cbd5e1", background: sel ? "#eff6ff" : "#fff", color: sel ? "#1e40af" : "#475569", cursor: "pointer" }}>
-                                  {add.name} {sel ? `(${sel.qty}x)` : ""} <span style={{ opacity: 0.5 }}>{money(add.valueCents)}</span>
-                                </button>
-                              );
-                            })}
+                      <div key={sp.product.id} style={{ background: idx === activeProductIndex ? "linear-gradient(180deg, #f8fbff, #ffffff)" : "#fff", borderRadius: 12, padding: 12, border: idx === activeProductIndex ? "1px solid #93c5fd" : "1px solid #e2e8f0", boxShadow: idx === activeProductIndex ? "0 10px 24px rgba(37,99,235,0.10)" : "none" }}>
+                        <div className="row-between" style={{ cursor: "pointer" }} onClick={() => setActiveProductIndex(idx)}>
+                          <div style={{ minWidth: 0 }}>
+                            <strong style={{ fontSize: 14, color: "#1e293b", display: "block" }}>{sp.product.name}</strong>
+                            <small style={{ color: "#64748b" }}>{sp.quantity}x · {money(sp.quantity * sp.product.salePriceCents)}</small>
                           </div>
-                          {sp.selectedAdditions.map((add) => (
-                            <div key={add.id} style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
-                              <small style={{ color: "#64748b" }}>{add.name}</small>
-                              <input type="number" min={1} value={add.qty} onChange={(e) => updateAddQty(idx, add.id, Number(e.target.value))} style={{ width: 60, padding: "5px 8px", borderRadius: 8, border: "1px solid #cbd5e1" }} />
-                              <small style={{ color: "#64748b" }}>{money(add.valueCents)}</small>
-                            </div>
-                          ))}
+                          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                            <button className="item-action-button obs" onClick={(e) => { e.stopPropagation(); setActiveProductIndex(idx); }}>Obs</button>
+                            <button className={`item-action-button options${sp.selectedAdditions.length ? " active" : ""}`} onClick={(e) => { e.stopPropagation(); setActiveProductIndex(idx); toggleProductAdditions(idx); }}>{sp.selectedAdditions.length ? `Opcionais (${sp.selectedAdditions.length})` : "Opcionais"}</button>
+                            <button className="item-action-button remove" onClick={(e) => { e.stopPropagation(); removeProduct(idx); }}><X size={15} /></button>
+                          </div>
                         </div>
+
+                        {idx === activeProductIndex && (
+                          <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: "#475569" }}>Qtd<input type="number" value={sp.quantity} onChange={(e) => updateProductQty(idx, Number(e.target.value))} min={1} style={{ width: 54, padding: "5px 8px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13, textAlign: "center", background: "#fff" }} /></label>
+                              <input value={sp.note} onChange={(e) => updateProductNote(idx, e.target.value)} placeholder="Obs: sem cebola, bem passado..." style={{ flex: 1, minWidth: 150, padding: "6px 10px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 12, background: "#fff" }} />
+                            </div>
+                            <button onClick={() => toggleProductAdditions(idx)} style={{ alignSelf: "flex-start", background: sp.showAdditions ? "#eef2ff" : "#fff", color: "#0f172a", border: "1px solid rgba(37,99,235,0.22)", borderRadius: 999, padding: "5px 10px", fontSize: 12, fontWeight: 900, cursor: "pointer" }}>
+                              Opcionais {sp.selectedAdditions.length ? `(${sp.selectedAdditions.length})` : ""}
+                            </button>
+                            {sp.showAdditions && (
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                {additions.filter((a) => a.active).map((add) => {
+                                  const sel = sp.selectedAdditions.find((sa) => sa.id === add.id);
+                                  return (
+                                    <button key={add.id} onClick={() => toggleAddition(idx, add)} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11.5, padding: "4px 10px", borderRadius: 18, border: sel ? "1px solid rgba(37,99,235,0.35)" : "1px solid #cbd5e1", background: sel ? "linear-gradient(135deg, rgba(59,130,246,0.16), rgba(37,99,235,0.08))" : "#fff", color: sel ? "#1d4ed8" : "#475569", cursor: "pointer", fontWeight: sel ? 800 : 600 }}>
+                                      {add.name} {sel ? `(${sel.qty}x)` : ""} <span style={{ opacity: 0.5 }}>{money(add.valueCents)}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                            {sp.selectedAdditions.length > 0 && (
+                              <div style={{ display: "grid", gap: 6 }}>
+                                {sp.selectedAdditions.map((add) => (
+                                  <div key={add.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                    <small style={{ color: "#64748b", fontSize: 11.5 }}>{add.name}</small>
+                                    <input type="number" min={1} value={add.qty} onChange={(e) => updateAddQty(idx, add.id, Number(e.target.value))} style={{ width: 56, padding: "4px 8px", borderRadius: 8, border: "1px solid #cbd5e1" }} />
+                                    <small style={{ color: "#64748b", fontSize: 11.5 }}>{money(add.valueCents)}</small>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
-                  <button onClick={addItems} style={{ marginTop: 14, width: "100%", padding: "12px", background: "linear-gradient(135deg, #2563eb, #1d4ed8)", color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><Plus size={18} /> Confirmar itens</button>
+
+                  <div style={{ borderTop: "1px solid #e2e8f0", padding: "12px 18px", background: "linear-gradient(180deg, #fff, #f8fbff)", position: "sticky", bottom: 0 }}>
+                    <button onClick={addItems} style={{ width: "100%", padding: "12px", background: "linear-gradient(135deg, #1d4ed8, #2563eb)", color: "#fff", border: "none", borderRadius: 14, fontSize: 14, fontWeight: 900, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 12px 24px rgba(37,99,235,0.18)" }}><Plus size={17} /> Confirmar itens</button>
+                  </div>
                 </div>
-              )}
+              </div>
             </div>
           </div>
         )}
@@ -543,6 +715,7 @@ export default function ComandasModule({ data: initialData, money, mutate: reloa
             </div>
           </div>
         )}
+        {renderTransferMergeModals()}
       </div>
     );
   }
@@ -613,14 +786,14 @@ export default function ComandasModule({ data: initialData, money, mutate: reloa
         {tables.filter((table) => (searchTerm ? table.name.toLowerCase().includes(searchTerm.toLowerCase()) : true)).map((table) => {
           const color = statusColor[table.status] ?? "#6b7280";
           return (
-            <div key={table.id} onClick={() => { if (table.status === "LIVRE") { setSelectedTable(table); setShowOpenDialog(true); } }} onDoubleClick={() => { if (table.status !== "LIVRE") { setSelectedTable(table); setOrders([]); setView("order"); void loadComandaOrders(); window.scrollTo({ top: 0, behavior: "smooth" }); } }} style={{ background: `linear-gradient(145deg, ${color}22, ${color}11)`, border: `2px solid ${color}44`, borderRadius: 16, padding: 20, cursor: "pointer", textAlign: "center" }}>
+            <div key={table.id} onClick={() => { if (table.status === "LIVRE") { setShowTransfer(false); setShowMergeModal(false); setTransferItemIds([]); setTransferTarget(""); setMergeSources([]); setSelectedTable(table); setShowOpenDialog(true); } }} onDoubleClick={() => { if (table.status !== "LIVRE") { setShowTransfer(false); setShowMergeModal(false); setTransferItemIds([]); setTransferTarget(""); setMergeSources([]); setSelectedTable(table); setOrders([]); setView("order"); void loadComandaOrders(); window.scrollTo({ top: 0, left: 0, behavior: "smooth" }); } }} style={{ background: `linear-gradient(145deg, ${color}22, ${color}11)`, border: `2px solid ${color}44`, borderRadius: 16, padding: 20, cursor: "pointer", textAlign: "center" }}>
               <div className="table-icon-bubble" style={{ background: color }}><UserRound size={24} /></div>
               <strong style={{ display: "block", fontSize: 15 }}>{table.name}</strong>
               <span style={{ fontSize: 12, color: color, fontWeight: 700 }}>{statusLabel[table.status] ?? table.status}</span>
               {table.customerName ? <div style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: 6, background: "#dbeafe", borderRadius: 20, padding: "2px 10px 2px 6px", fontSize: 11, fontWeight: 700, color: "#1e40af" }}><UserRound size={12} />{table.customerName}</div> : <div style={{ minHeight: 22 }} />}
               {table.status !== "LIVRE" && (() => {
-                const tblOrders = (initialData?.orders ?? []).filter((o: any) => o.tableId === table.id && o.status !== "PAGO" && o.status !== "CANCELADO");
-                const total = tblOrders.reduce((s: number, o: any) => s + (o.items ?? []).reduce((si: number, i: any) => si + (i.cancelledAt ? 0 : i.totalCents + (i.additives ?? []).reduce((sa: number, a: any) => sa + a.totalCents, 0)), 0), 0);
+                const tblOrders = gridOrders.filter((o: any) => o.tableId === table.id && o.status !== "PAGO" && o.status !== "CANCELADO");
+                const total = tblOrders.reduce((s: number, o: any) => s + calcTotal(o.items ?? []), 0);
                 return total > 0 ? <div style={{ fontWeight: 800, fontSize: 17, color: "#a16207", marginTop: 4, background: "#fef9c3", borderRadius: 8, padding: "2px 10px", display: "inline-block", border: "1px solid #facc15" }}>{money(total)}</div> : null;
               })()}
             </div>
@@ -732,59 +905,69 @@ export default function ComandasModule({ data: initialData, money, mutate: reloa
         </div>
       )}
 
-      {showTransfer && selectedTable && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.6)", zIndex: 998, display: "grid", placeItems: "center", backdropFilter: "blur(4px)" }} onClick={() => setShowTransfer(false)}>
-          <div style={{ background: "#fff", borderRadius: 20, width: 520, maxWidth: "96vw", maxHeight: "90vh", display: "flex", flexDirection: "column", boxShadow: "0 25px 80px rgba(0,0,0,0.2)", overflow: "hidden" }} onClick={(e) => e.stopPropagation()}>
-            <div className="row-between" style={{ padding: "16px 24px", borderBottom: "1px solid #e2e8f0", background: "#f8fafc" }}>
-              <h3 style={{ margin: 0 }}>Transferir Itens</h3>
-              <button className="ghost" onClick={() => setShowTransfer(false)} style={{ borderRadius: 10, padding: 6 }}><X size={18} /></button>
+      {showTransfer && selectedTable && createPortal(
+        <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.6)", zIndex: 10000, display: "grid", placeItems: "center", backdropFilter: "blur(4px)" }} onClick={() => setShowTransfer(false)}>
+          <div style={{ background: "linear-gradient(135deg, #0f172a, #1d4ed8)", borderRadius: 22, width: 560, maxWidth: "94vw", maxHeight: "90vh", display: "flex", flexDirection: "column", boxShadow: "0 25px 80px rgba(37,99,235,0.4)", color: "#fff", overflow: "hidden" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ padding: "26px 24px 18px", textAlign: "center" }}>
+              <div style={{ width: 56, height: 56, borderRadius: "50%", background: "rgba(255,255,255,0.12)", display: "grid", placeItems: "center", margin: "0 auto 12px", border: "1px solid rgba(255,255,255,0.18)" }}>
+                <ArrowLeftRight size={26} style={{ color: "#fff" }} />
+              </div>
+              <h3 style={{ margin: "0 0 4px", fontSize: 24 }}>Transferir Itens</h3>
+              <p style={{ margin: 0, opacity: 0.82, fontSize: 14 }}>Escolha os itens e a comanda de destino.</p>
             </div>
-            <div style={{ flex: 1, overflow: "auto", padding: 16, display: "grid", gap: 8 }}>
+            <div style={{ flex: 1, overflow: "auto", padding: "0 24px 20px", display: "grid", gap: 8 }}>
+              <p style={{ margin: 0, color: "rgba(255,255,255,0.75)", fontSize: 13 }}>Selecione os itens que deseja mover para outra comanda.</p>
               {items.filter((i: any) => !i.cancelledAt).map((item: any) => {
                 const checked = transferItemIds.includes(item.id);
                 return (
-                  <label key={item.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: 10, borderRadius: 12, border: checked ? "2px solid #f59e0b" : "1px solid #e2e8f0", background: checked ? "#fffbeb" : "#fff" }}>
+                  <label key={item.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: 12, borderRadius: 14, border: checked ? "2px solid rgba(255,255,255,0.35)" : "1px solid rgba(255,255,255,0.12)", background: checked ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.08)", cursor: "pointer" }}>
                     <input type="checkbox" checked={checked} onChange={() => setTransferItemIds((prev) => prev.includes(item.id) ? prev.filter((id) => id !== item.id) : [...prev, item.id])} />
-                    <strong style={{ flex: 1 }}>{item.nameSnapshot}</strong>
-                    <span>{money(item.totalCents)}</span>
+                    <strong style={{ flex: 1, color: "#fff" }}>{item.nameSnapshot}</strong>
+                    <span style={{ color: "#dbeafe", fontWeight: 800 }}>{money(item.totalCents)}</span>
                   </label>
                 );
               })}
-              <label>Comanda destino<select value={transferTarget} onChange={(e) => setTransferTarget(e.target.value)}><option value="">Selecione...</option>{tables.filter((t) => t.id !== selectedTable.id).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+              {!items.filter((i: any) => !i.cancelledAt).length && <div style={{ padding: 16, textAlign: "center", color: "rgba(255,255,255,0.75)", border: "1px dashed rgba(255,255,255,0.18)", borderRadius: 12, background: "rgba(255,255,255,0.06)" }}>Nenhum item disponível para transferir.</div>}
+              <label style={{ color: "#fff" }}>Comanda destino<select value={transferTarget} onChange={(e) => setTransferTarget(e.target.value)} style={{ background: "rgba(255,255,255,0.95)", color: "#0f172a" }}><option value="">Selecione...</option>{tables.filter((t) => t.id !== selectedTable.id).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
             </div>
-            <div style={{ padding: 16, borderTop: "1px solid #e2e8f0", display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <button className="ghost" onClick={() => setShowTransfer(false)}>Cancelar</button>
-              <button disabled={!transferTarget || !transferItemIds.length} onClick={transferItems} style={{ background: "linear-gradient(135deg, #f59e0b, #d97706)", color: "#fff", border: 0, borderRadius: 10, padding: "10px 24px", fontWeight: 700 }}>Transferir</button>
+            <div style={{ padding: "16px 24px 24px", display: "flex", gap: 10, justifyContent: "center" }}>
+              <button type="button" className="ghost" onClick={() => setShowTransfer(false)} style={{ color: "rgba(255,255,255,0.9)", border: "1px solid rgba(255,255,255,0.18)", borderRadius: 14, padding: "11px 24px", fontSize: 14, background: "rgba(255,255,255,0.06)" }}>Cancelar</button>
+              <button type="button" disabled={!transferTarget || !transferItemIds.length} onClick={transferItems} style={{ background: "linear-gradient(135deg, #ffffff, #e2e8f0)", color: "#1e3a5f", border: "none", borderRadius: 14, padding: "11px 24px", fontSize: 14, fontWeight: 800, cursor: !transferTarget || !transferItemIds.length ? "default" : "pointer", boxShadow: "0 10px 24px rgba(0,0,0,0.16)" }}>Transferir {transferItemIds.length ? `${transferItemIds.length} item(ns)` : ""}</button>
             </div>
           </div>
-        </div>
+        </div>, document.body
       )}
 
-      {showMergeModal && selectedTable && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.6)", zIndex: 998, display: "grid", placeItems: "center", backdropFilter: "blur(4px)" }} onClick={() => setShowMergeModal(false)}>
-          <div style={{ background: "#fff", borderRadius: 20, width: 440, maxWidth: "96vw", maxHeight: "90vh", display: "flex", flexDirection: "column", boxShadow: "0 25px 80px rgba(0,0,0,0.2)", overflow: "hidden" }} onClick={(e) => e.stopPropagation()}>
-            <div className="row-between" style={{ padding: "16px 24px", borderBottom: "1px solid #e2e8f0", background: "#f8fafc" }}>
-              <h3 style={{ margin: 0 }}>Juntar Mesas</h3>
-              <button className="ghost" onClick={() => setShowMergeModal(false)} style={{ borderRadius: 10, padding: 6 }}><X size={18} /></button>
+      {showMergeModal && selectedTable && createPortal(
+        <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.6)", zIndex: 10000, display: "grid", placeItems: "center", backdropFilter: "blur(4px)" }} onClick={() => setShowMergeModal(false)}>
+          <div style={{ background: "linear-gradient(135deg, #0f172a, #1d4ed8)", borderRadius: 22, width: 460, maxWidth: "94vw", maxHeight: "90vh", display: "flex", flexDirection: "column", boxShadow: "0 25px 80px rgba(37,99,235,0.4)", color: "#fff", overflow: "hidden" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ padding: "26px 24px 18px", textAlign: "center" }}>
+              <div style={{ width: 56, height: 56, borderRadius: "50%", background: "rgba(255,255,255,0.12)", display: "grid", placeItems: "center", margin: "0 auto 12px", border: "1px solid rgba(255,255,255,0.18)" }}>
+                <Merge size={26} style={{ color: "#fff" }} />
+              </div>
+              <h3 style={{ margin: "0 0 4px", fontSize: 24 }}>Juntar Comandas</h3>
+              <p style={{ margin: 0, opacity: 0.82, fontSize: 14 }}>Selecione quais comandas vão ser reunidas.</p>
             </div>
-            <div style={{ flex: 1, overflow: "auto", padding: 16, display: "grid", gap: 8 }}>
+            <div style={{ flex: 1, overflow: "auto", padding: "0 24px 20px", display: "grid", gap: 8 }}>
+              <p style={{ margin: 0, color: "rgba(255,255,255,0.75)", fontSize: 13 }}>Escolha as comandas ocupadas que serão reunidas nesta comanda principal.</p>
               {tables.filter((t) => t.id !== selectedTable.id && t.status === "OCUPADA").map((t) => {
                 const checked = mergeSources.includes(t.id);
                 return (
-                  <label key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: 10, borderRadius: 12, border: checked ? "2px solid #8b5cf6" : "1px solid #e2e8f0", background: checked ? "#f5f3ff" : "#fff" }}>
+                  <label key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: 12, borderRadius: 14, border: checked ? "2px solid rgba(255,255,255,0.35)" : "1px solid rgba(255,255,255,0.12)", background: checked ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.08)", cursor: "pointer" }}>
                     <input type="checkbox" checked={checked} onChange={() => setMergeSources((prev) => prev.includes(t.id) ? prev.filter((id) => id !== t.id) : [...prev, t.id])} />
-                    <strong style={{ flex: 1 }}>{t.name}</strong>
-                    {t.customerName && <small>{t.customerName}</small>}
+                    <strong style={{ flex: 1, color: "#fff" }}>{t.name}</strong>
+                    {t.customerName && <small style={{ color: "#dbeafe" }}>{t.customerName}</small>}
                   </label>
                 );
               })}
+              {!tables.filter((t) => t.id !== selectedTable.id && t.status === "OCUPADA").length && <div style={{ padding: 16, textAlign: "center", color: "rgba(255,255,255,0.75)", border: "1px dashed rgba(255,255,255,0.18)", borderRadius: 12, background: "rgba(255,255,255,0.06)" }}>Nenhuma comanda ocupada disponível.</div>}
             </div>
-            <div style={{ padding: 16, borderTop: "1px solid #e2e8f0", display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <button className="ghost" onClick={() => setShowMergeModal(false)}>Cancelar</button>
-              <button disabled={!mergeSources.length} onClick={mergeTables} style={{ background: "linear-gradient(135deg, #8b5cf6, #7c3aed)", color: "#fff", border: 0, borderRadius: 10, padding: "10px 24px", fontWeight: 700 }}>Juntar</button>
+            <div style={{ padding: "16px 24px 24px", display: "flex", gap: 10, justifyContent: "center" }}>
+              <button type="button" className="ghost" onClick={() => setShowMergeModal(false)} style={{ color: "rgba(255,255,255,0.9)", border: "1px solid rgba(255,255,255,0.18)", borderRadius: 14, padding: "11px 24px", fontSize: 14, background: "rgba(255,255,255,0.06)" }}>Cancelar</button>
+              <button type="button" disabled={!mergeSources.length} onClick={mergeTables} style={{ background: "linear-gradient(135deg, #ffffff, #e2e8f0)", color: "#1e3a5f", border: "none", borderRadius: 14, padding: "11px 24px", fontSize: 14, fontWeight: 800, cursor: !mergeSources.length ? "default" : "pointer", boxShadow: "0 10px 24px rgba(0,0,0,0.16)" }}>Juntar {mergeSources.length ? `${mergeSources.length} comanda(s)` : ""}</button>
             </div>
           </div>
-        </div>
+        </div>, document.body
       )}
     </div>
   );
