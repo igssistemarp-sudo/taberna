@@ -97,8 +97,10 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
   const [paidOrderId, setPaidOrderId] = React.useState<string | null>(null);
   const [showItemMeta, setShowItemMeta] = React.useState(true);
   const [showCancelledItems, setShowCancelledItems] = React.useState(false);
+  const [customerNameDraft, setCustomerNameDraft] = React.useState("");
 
   React.useEffect(() => { if (initialData) setTables(mesaOnly(initialData.tables)); }, [initialData]);
+  React.useEffect(() => { setCustomerNameDraft(selectedTable?.customerName ?? ""); }, [selectedTable?.id, selectedTable?.customerName]);
 
   async function loadTableOrders() {
     if (!selectedTable) return;
@@ -117,6 +119,7 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
     try {
       const opened = await api(`/api/tables/${selectedTable.id}/open`, { method: "PUT", body: JSON.stringify({ customerName: name || null }) });
       setSelectedTable(opened);
+      setCustomerNameDraft(opened.customerName ?? "");
       setTables((prev) => prev.map((t) => t.id === opened.id ? opened : t));
       await reload("/api/company", {});
       const order = await api("/api/orders", { method: "POST", body: JSON.stringify({ type: "MESA", tableId: opened.id, customerNameSnapshot: opened.customerName ?? null, items: [], payments: [] }) });
@@ -154,6 +157,16 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
       setCancelItemId(null);
       setCancelReason("");
     } catch (e: any) { setError(e.message); } finally { setLoading(false); }
+  }
+
+  async function saveCustomerName() {
+    if (!selectedTable) return;
+    const value = customerNameDraft.trim();
+    if ((selectedTable.customerName ?? "") === value) return;
+    await api(`/api/tables/${selectedTable.id}`, { method: "PUT", body: JSON.stringify({ customerName: value || null }) });
+    const updated = await api("/api/tables");
+    setTables(updated);
+    setSelectedTable(updated.find((t: any) => t.id === selectedTable.id) ?? null);
   }
 
   async function payOrder() {
@@ -320,7 +333,7 @@ export default function TablesModule({ data: initialData, money, mutate: reload 
             <div style={{ display: "flex", alignItems: "center", gap: 6, background: "linear-gradient(135deg, #dbeafe, #eff6ff)", borderRadius: 50, padding: "5px 12px 5px 10px", width: "100%", maxWidth: "100%", border: "1px solid #93c5fd", boxSizing: "border-box" }}>
               <UserRound size={14} style={{ color: "#2563eb" }} />
               <span style={{ fontSize: 12, fontWeight: 600, color: "#1e40af" }}>Cliente:</span>
-              <input value={selectedTable.customerName ?? ""} autoFocus={!selectedTable.customerName} onChange={async (e) => { const v = e.target.value; await api(`/api/tables/${selectedTable.id}`, { method: "PUT", body: JSON.stringify({ customerName: v || null }) }); await reload("/api/company", {}); const updated = await api("/api/tables"); setTables(updated); setSelectedTable(updated.find((t: any) => t.id === selectedTable.id) ?? null); }} style={{ background: "transparent", border: "none", color: "#1e3a5f", fontWeight: 700, fontSize: 13, padding: "1px 4px", minWidth: 0, flex: 1, outline: "none" }} placeholder="Digite o nome..." />
+              <input value={customerNameDraft} autoFocus={!selectedTable.customerName} onChange={(e) => setCustomerNameDraft(e.target.value)} onBlur={() => { void saveCustomerName(); }} onKeyDown={(e) => { if (e.key === "Enter") { e.currentTarget.blur(); } }} style={{ background: "transparent", border: "none", color: "#1e3a5f", fontWeight: 700, fontSize: 13, padding: "1px 4px", minWidth: 0, flex: 1, outline: "none" }} placeholder="Digite o nome..." />
             </div>
             <div style={{ display: "grid", gap: 7 }}>
               <button type="button" onClick={openAddItemModal} style={{ background: "linear-gradient(135deg, #10b981, #059669)", border: 0, borderRadius: 50, padding: "7px 8px 7px 18px", color: "#fff", fontWeight: 700, fontSize: 11.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 7, minHeight: 32, width: "100%" }}><Plus size={12} /> Lançar Item</button>
