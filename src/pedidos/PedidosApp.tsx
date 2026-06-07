@@ -130,7 +130,13 @@ function hasRole(role: string | undefined, allowed: string[]) {
 
 export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
   const [config, setConfig] = React.useState<ServerConfig | null>(loadConfig());
-  const [configDraft, setConfigDraft] = React.useState({ mode: config?.mode ?? inferMode(config?.baseUrl), serverUrl: config?.baseUrl ?? "", serverName: config?.serverName ?? "Servidor Taberna", port: "8000" });
+  const isHostedWeb = window.location.protocol === "https:" && !/^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
+  const activeConfig = React.useMemo(() => {
+    if (!config) return null;
+    if (isHostedWeb) return { ...config, baseUrl: window.location.origin, mode: "web" as const };
+    return config;
+  }, [config, isHostedWeb]);
+  const [configDraft, setConfigDraft] = React.useState({ mode: activeConfig?.mode ?? inferMode(activeConfig?.baseUrl), serverUrl: activeConfig?.baseUrl ?? "", serverName: activeConfig?.serverName ?? "Servidor Taberna", port: "8000" });
   const [token, setToken] = React.useState<string | null>(localStorage.getItem(TOKEN_KEY));
   const [user, setUser] = React.useState<User | null>(null);
   const [snapshot, setSnapshot] = React.useState<Snapshot | null>(null);
@@ -153,7 +159,7 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
   const [showMergeModal, setShowMergeModal] = React.useState(false);
   const [mergeSources, setMergeSources] = React.useState<string[]>([]);
 
-  const baseUrl = config?.baseUrl ?? "";
+  const baseUrl = activeConfig?.baseUrl ?? "";
   const role = user?.role?.toUpperCase();
   const canTransfer = hasRole(role, ["ADMIN", "GERENTE", "CAIXA"]);
   const canJoin = hasRole(role, ["ADMIN", "GERENTE", "CAIXA"]);
@@ -163,13 +169,13 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
   }, []);
 
   React.useEffect(() => {
-    if (config) setConfigDraft((current) => ({ ...current, mode: config.mode ?? inferMode(config.baseUrl), serverUrl: config.baseUrl, serverName: config.serverName }));
-  }, [config]);
+    if (activeConfig) setConfigDraft((current) => ({ ...current, mode: activeConfig.mode ?? inferMode(activeConfig.baseUrl), serverUrl: activeConfig.baseUrl, serverName: activeConfig.serverName }));
+  }, [activeConfig]);
 
   React.useEffect(() => {
-    if (!config || !token) return;
+    if (!activeConfig || !token) return;
     void loadSnapshot();
-  }, [config?.baseUrl, token]);
+  }, [activeConfig?.baseUrl, token]);
 
   async function testConnection() {
     const url = configDraft.mode === "web" ? window.location.origin : normalizeBaseUrl(configDraft.serverUrl, configDraft.port);
@@ -198,15 +204,15 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
   }
 
   async function doLogin() {
-    if (!config) return;
+    if (!activeConfig) return;
     setLoading(true);
     setError(null);
     try {
-      await checkHealth(config.baseUrl);
-      const result = await api<{ token: string }>(config.baseUrl, "/api/auth/login", { method: "POST", body: JSON.stringify({ login, password }) });
+      await checkHealth(activeConfig.baseUrl);
+      const result = await api<{ token: string }>(activeConfig.baseUrl, "/api/auth/login", { method: "POST", body: JSON.stringify({ login, password }) });
       localStorage.setItem(TOKEN_KEY, result.token);
       setToken(result.token);
-      const me = await api<User>(config.baseUrl, "/api/auth/me", {}, result.token);
+      const me = await api<User>(activeConfig.baseUrl, "/api/auth/me", {}, result.token);
       if (!ALLOWED_ROLES.has(me.role.toUpperCase())) throw new Error("Perfil sem acesso ao app do garçom.");
       setUser(me);
       await loadSnapshot(result.token);
@@ -223,19 +229,19 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
   }
 
   async function loadSnapshot(overrideToken?: string) {
-    if (!config) return;
+    if (!activeConfig) return;
     const authToken = overrideToken ?? token;
     if (!authToken) return;
     setLoading(true);
     setError(null);
     try {
       const [company, me, tables, products, additions, orders] = await Promise.all([
-        api<Company | null>(config.baseUrl, "/api/company", {}, authToken),
-        api<User>(config.baseUrl, "/api/auth/me", {}, authToken),
-        api<TableData[]>(config.baseUrl, "/api/tables", {}, authToken),
-        api<ProductData[]>(config.baseUrl, "/api/products", {}, authToken),
-        api<AdditionData[]>(config.baseUrl, "/api/additions", {}, authToken),
-        api<OrderData[]>(config.baseUrl, "/api/orders", {}, authToken)
+        api<Company | null>(activeConfig.baseUrl, "/api/company", {}, authToken),
+        api<User>(activeConfig.baseUrl, "/api/auth/me", {}, authToken),
+        api<TableData[]>(activeConfig.baseUrl, "/api/tables", {}, authToken),
+        api<ProductData[]>(activeConfig.baseUrl, "/api/products", {}, authToken),
+        api<AdditionData[]>(activeConfig.baseUrl, "/api/additions", {}, authToken),
+        api<OrderData[]>(activeConfig.baseUrl, "/api/orders", {}, authToken)
       ]);
       setUser(me);
       setSnapshot({ company, user: me, tables: tables ?? [], products: products ?? [], additions: additions ?? [], orders: orders ?? [] });
@@ -277,8 +283,8 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
   }
 
   async function loadTableDetail(tableId: string) {
-    if (!config || !token) return;
-    const data = await api<{ table: TableData; orders: OrderData[] }>(config.baseUrl, `/api/tables/${tableId}/pre-conta`, {}, token);
+    if (!activeConfig || !token) return;
+    const data = await api<{ table: TableData; orders: OrderData[] }>(activeConfig.baseUrl, `/api/tables/${tableId}/pre-conta`, {}, token);
     setSelectedTable(data.table);
     setDetailOrders(data.orders ?? []);
     setSnapshot((state) => state ? { ...state, tables: state.tables.map((item) => item.id === data.table.id ? data.table : item) } : state);
@@ -289,11 +295,11 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
   }
 
   async function openSelectedTable(table: TableData = selectedTable as TableData) {
-    if (!config || !token || !table) return;
+    if (!activeConfig || !token || !table) return;
     setLoading(true);
     try {
-      const opened = await api<TableData>(config.baseUrl, `/api/tables/${table.id}/open`, { method: "PUT", body: JSON.stringify({ customerName: customerDraft || null }) }, token);
-      await api<OrderData>(config.baseUrl, "/api/orders", { method: "POST", body: JSON.stringify({ type: "MESA", tableId: opened.id, customerNameSnapshot: opened.customerName ?? null, items: [], payments: [] }) }, token);
+      const opened = await api<TableData>(activeConfig.baseUrl, `/api/tables/${table.id}/open`, { method: "PUT", body: JSON.stringify({ customerName: customerDraft || null }) }, token);
+      await api<OrderData>(activeConfig.baseUrl, "/api/orders", { method: "POST", body: JSON.stringify({ type: "MESA", tableId: opened.id, customerNameSnapshot: opened.customerName ?? null, items: [], payments: [] }) }, token);
       setSelectedTable(opened);
       await loadSnapshot();
       await loadTableDetail(opened.id);
@@ -306,10 +312,10 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
   }
 
   async function saveCustomerName() {
-    if (!config || !token || !selectedTable) return;
+    if (!activeConfig || !token || !selectedTable) return;
     const value = customerDraft.trim();
     if ((selectedTable.customerName ?? "") === value) return;
-    await api<TableData>(config.baseUrl, `/api/tables/${selectedTable.id}`, { method: "PUT", body: JSON.stringify({ customerName: value || null }) }, token);
+    await api<TableData>(activeConfig.baseUrl, `/api/tables/${selectedTable.id}`, { method: "PUT", body: JSON.stringify({ customerName: value || null }) }, token);
     await loadSnapshot();
     await loadTableDetail(selectedTable.id);
   }
@@ -357,7 +363,7 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
   }
 
   async function submitItems() {
-    if (!config || !token || !selectedTable) return;
+    if (!activeConfig || !token || !selectedTable) return;
     const order = currentOrder();
     if (!order) return setError("Abra a mesa/comanda antes de lançar itens.");
     setLoading(true);
@@ -366,7 +372,7 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
         const additives = draft.selectedAdditions.filter((add) => add.qty > 0).map((add) => ({ additionalId: add.id, name: add.name, quantity: add.qty, unitPriceCents: add.valueCents }));
         const addTotal = additives.reduce((sum, add) => sum + (add.quantity * add.unitPriceCents), 0);
         const totalCents = (draft.quantity * draft.product.salePriceCents) + addTotal;
-        await api(config.baseUrl, `/api/orders/${order.id}/items`, {
+        await api(activeConfig.baseUrl, `/api/orders/${order.id}/items`, {
           method: "POST",
           body: JSON.stringify({
             productId: draft.product.id,
@@ -394,10 +400,10 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
   }
 
   async function requestPreConta() {
-    if (!config || !token || !selectedTable) return;
+    if (!activeConfig || !token || !selectedTable) return;
     setLoading(true);
     try {
-      await api(config.baseUrl, `/api/tables/${selectedTable.id}`, { method: "PUT", body: JSON.stringify({ status: "FECHANDO_CONTA" }) }, token);
+      await api(activeConfig.baseUrl, `/api/tables/${selectedTable.id}`, { method: "PUT", body: JSON.stringify({ status: "FECHANDO_CONTA" }) }, token);
       await loadSnapshot();
       await loadTableDetail(selectedTable.id);
       setMessage("Pré-conta solicitada.");
@@ -409,10 +415,10 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
   }
 
   async function requestCashClose() {
-    if (!config || !token || !selectedTable) return;
+    if (!activeConfig || !token || !selectedTable) return;
     setLoading(true);
     try {
-      await api(config.baseUrl, `/api/tables/${selectedTable.id}`, { method: "PUT", body: JSON.stringify({ status: "AGUARDANDO_PAGAMENTO" }) }, token);
+      await api(activeConfig.baseUrl, `/api/tables/${selectedTable.id}`, { method: "PUT", body: JSON.stringify({ status: "AGUARDANDO_PAGAMENTO" }) }, token);
       await loadSnapshot();
       await loadTableDetail(selectedTable.id);
       setMessage("Mesa enviada para o caixa.");
@@ -424,10 +430,10 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
   }
 
   async function transferItems() {
-    if (!config || !token || !selectedTable || !transferTarget || !transferItemIds.length) return;
+    if (!activeConfig || !token || !selectedTable || !transferTarget || !transferItemIds.length) return;
     setLoading(true);
     try {
-      await api(config.baseUrl, "/api/orders/transfer-items", { method: "POST", body: JSON.stringify({ fromTableId: selectedTable.id, toTableId: transferTarget, orderItemIds: transferItemIds }) }, token);
+      await api(activeConfig.baseUrl, "/api/orders/transfer-items", { method: "POST", body: JSON.stringify({ fromTableId: selectedTable.id, toTableId: transferTarget, orderItemIds: transferItemIds }) }, token);
       await loadSnapshot();
       await loadTableDetail(selectedTable.id);
       setShowTransferModal(false);
@@ -442,10 +448,10 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
   }
 
   async function mergeTables() {
-    if (!config || !token || !selectedTable || !mergeSources.length) return;
+    if (!activeConfig || !token || !selectedTable || !mergeSources.length) return;
     setLoading(true);
     try {
-      await api(config.baseUrl, "/api/tables/merge", { method: "POST", body: JSON.stringify({ mainTableId: selectedTable.id, secondaryTableIds: mergeSources }) }, token);
+      await api(activeConfig.baseUrl, "/api/tables/merge", { method: "POST", body: JSON.stringify({ mainTableId: selectedTable.id, secondaryTableIds: mergeSources }) }, token);
       await loadSnapshot();
       await loadTableDetail(selectedTable.id);
       setShowMergeModal(false);
@@ -471,7 +477,7 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
   const comandas = tables.filter((table) => table.name.toLowerCase().startsWith("comanda"));
   const filteredProducts = searchTerm ? products.filter((product) => product.name.toLowerCase().includes(searchTerm.toLowerCase()) || String(product.code).includes(searchTerm) || (product.category?.name ?? "").toLowerCase().includes(searchTerm.toLowerCase())) : products;
 
-  if (!config) {
+  if (!activeConfig) {
     return renderConfigScreen();
   }
   if (!token || !user) {
@@ -521,7 +527,7 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18 }}>
             <div style={{ width: 52, height: 52, borderRadius: 18, background: "linear-gradient(135deg, #2563eb, #1d4ed8)", display: "grid", placeItems: "center" }}><ChefHat size={22} /></div>
             <div>
-              <div style={{ fontSize: 12, letterSpacing: 1.2, textTransform: "uppercase", color: "#93c5fd", fontWeight: 800 }}>{config?.serverName ?? "Servidor Taberna"}</div>
+              <div style={{ fontSize: 12, letterSpacing: 1.2, textTransform: "uppercase", color: "#93c5fd", fontWeight: 800 }}>{activeConfig?.serverName ?? "Servidor Taberna"}</div>
               <h2 style={{ margin: 0 }}>Acesso do Garçom</h2>
             </div>
           </div>
@@ -588,7 +594,7 @@ export default function PedidosApp({ moneyFn = money }: { moneyFn?: MoneyFn }) {
       <div style={{ padding: 14, display: "grid", gap: 14 }}>
         <div style={heroStyle}>
           <div>
-            <div style={{ fontSize: 12, color: "#93c5fd", letterSpacing: 1.1, textTransform: "uppercase", fontWeight: 800 }}>{company?.nomeFantasia ?? config?.serverName ?? "IGS Lanchonete PRO"}</div>
+            <div style={{ fontSize: 12, color: "#93c5fd", letterSpacing: 1.1, textTransform: "uppercase", fontWeight: 800 }}>{company?.nomeFantasia ?? activeConfig?.serverName ?? "IGS Lanchonete PRO"}</div>
             <h2 style={{ margin: "6px 0 4px" }}>{user?.name ?? "Usuário"}</h2>
             <div style={{ color: "#cbd5e1" }}>Perfil: {user?.role ?? ""}</div>
           </div>
